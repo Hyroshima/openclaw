@@ -66,6 +66,19 @@ export type PluginHookMessageReceivedEvent = {
   metadata?: Record<string, unknown>;
 };
 
+export type PluginHookMessagePreAuthEvent = {
+  channelId: string;
+  senderId: string;
+  content: string;
+  accountId?: string;
+  conversationId?: string;
+  timestamp?: number;
+  messageId?: string;
+  senderName?: string;
+  senderUsername?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type PluginHookMessageSendingEvent = {
   to: string;
   content: string;

@@ -23,7 +23,7 @@ import type { OpenClawConfig } from "../runtime-api.js";
 import { createWaSocket, formatError, getStatusCode, waitForWaConnection } from "../session.js";
 import { resolveWhatsAppSocketTiming } from "../socket-timing.js";
 import { resolveJidToE164 } from "../text-runtime.js";
-import { checkInboundAccessControl } from "./access-control.js";
+import { checkInboundAccessControl, emitWhatsAppMessagePreAuthHooks } from "./access-control.js";
 import {
   claimRecentInboundMessageDelivery,
   commitRecentInboundMessage,
@@ -586,9 +586,24 @@ export async function attachWebInboxToSocket(
       return null;
     }
 
+    const messageTimestampMs = msg.messageTimestamp
+      ? Number(msg.messageTimestamp) * 1000
+      : undefined;
+    const preAuthContent = extractText(msg.message ?? undefined);
     const participantJid = msg.key?.participant ?? undefined;
     const from = group ? remoteJid : await resolveInboundJid(remoteJid);
     if (!from) {
+      if (!group && !Boolean(msg.key?.fromMe)) {
+        emitWhatsAppMessagePreAuthHooks({
+          accountId: options.accountId,
+          from: remoteJid,
+          content: preAuthContent ?? "",
+          senderName: (msg.pushName ?? "").trim() || undefined,
+          senderE164: null,
+          remoteJid,
+          messageTimestampMs,
+        });
+      }
       return null;
     }
     const senderE164 = group
@@ -604,9 +619,6 @@ export async function attachWebInboxToSocket(
       groupSubject = meta.subject;
       groupParticipants = meta.participants;
     }
-    const messageTimestampMs = msg.messageTimestamp
-      ? Number(msg.messageTimestamp) * 1000
-      : undefined;
 
     const accessCfg = options.loadConfig?.() ?? options.cfg;
     const access = await checkInboundAccessControl({
@@ -615,6 +627,7 @@ export async function attachWebInboxToSocket(
       from,
       selfE164: self.e164 ?? null,
       senderE164,
+      content: preAuthContent,
       group,
       pushName: msg.pushName ?? undefined,
       isFromMe: Boolean(msg.key?.fromMe),

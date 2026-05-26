@@ -3,6 +3,7 @@ import {
   readAllowFromStoreMock,
   sendMessageMock,
   getAccessControlTestConfig,
+  runMessagePreAuthMock,
   setAccessControlTestConfig,
   setupAccessControlTestHarness,
   upsertPairingRequestMock,
@@ -36,6 +37,12 @@ function expectSilentlyBlocked(result: { allowed: boolean }) {
   expect(result.allowed).toBe(false);
   expect(upsertPairingRequestMock).not.toHaveBeenCalled();
   expect(sendMessageMock).not.toHaveBeenCalled();
+}
+
+async function flushPreAuthHooks() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 async function checkCommandAuthorizedForDm(params: {
@@ -143,6 +150,88 @@ describe("WhatsApp dmPolicy precedence", () => {
     const commandAuthorized = await checkCommandAuthorizedForDm({ cfg });
     expectSilentlyBlocked(result);
     expect(commandAuthorized).toBe(false);
+  });
+
+  it("emits pre-auth hooks for silently blocked allowlist DMs", async () => {
+    const cfg = {
+      channels: {
+        whatsapp: {
+          dmPolicy: "allowlist",
+          allowFrom: ["+15559999999"],
+        },
+      },
+    };
+    setAccessControlTestConfig(cfg);
+
+    const result = await checkInboundAccessControl({
+      cfg: getAccessControlTestConfig() as never,
+      accountId: "default",
+      from: "+15550001111",
+      selfE164: "+15550009999",
+      senderE164: "+15550001111",
+      content: "Memento Mori",
+      group: false,
+      pushName: "Visitor",
+      isFromMe: false,
+      messagePreAuthHookRunner: {
+        hasHooks: (hookName) => hookName === "message_pre_auth",
+        runMessagePreAuth: runMessagePreAuthMock as never,
+      },
+      sock: { sendMessage: sendMessageMock },
+      remoteJid: "15550001111@s.whatsapp.net",
+    });
+    await flushPreAuthHooks();
+
+    expectSilentlyBlocked(result);
+    expect(runMessagePreAuthMock).toHaveBeenCalledTimes(1);
+    expect(runMessagePreAuthMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: "whatsapp",
+        senderId: "+15550001111",
+        senderName: "Visitor",
+        content: "Memento Mori",
+        accountId: "default",
+        conversationId: "+15550001111",
+      }),
+      expect.objectContaining({
+        channelId: "whatsapp",
+        senderId: "+15550001111",
+      }),
+    );
+  });
+
+  it("does not emit pre-auth hooks for allowlisted DMs", async () => {
+    const cfg = {
+      channels: {
+        whatsapp: {
+          dmPolicy: "allowlist",
+          allowFrom: ["+15550001111"],
+        },
+      },
+    };
+    setAccessControlTestConfig(cfg);
+
+    const result = await checkInboundAccessControl({
+      cfg: getAccessControlTestConfig() as never,
+      accountId: "default",
+      from: "+15550001111",
+      selfE164: "+15550009999",
+      senderE164: "+15550001111",
+      content: "hello",
+      group: false,
+      pushName: "Known",
+      isFromMe: false,
+      messagePreAuthHookRunner: {
+        hasHooks: (hookName) => hookName === "message_pre_auth",
+        runMessagePreAuth: runMessagePreAuthMock as never,
+      },
+      sock: { sendMessage: sendMessageMock },
+      remoteJid: "15550001111@s.whatsapp.net",
+    });
+    await flushPreAuthHooks();
+
+    expect(result.allowed).toBe(true);
+    expect(runMessagePreAuthMock).not.toHaveBeenCalled();
   });
 
   it("inherits channel-level dmPolicy when account-level dmPolicy is unset", async () => {

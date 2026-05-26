@@ -1,4 +1,9 @@
 import "./monitor-inbox.test-harness.js";
+import {
+  clearInternalHooks,
+  registerInternalHook,
+  setInternalHooksEnabled,
+} from "openclaw/plugin-sdk/hook-runtime";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ACCOUNT_ID,
@@ -175,6 +180,61 @@ describe("web monitor inbox", () => {
     expect(sock.readMessages).not.toHaveBeenCalled();
 
     await listener.close();
+  });
+
+  it("emits pre-auth for unmapped LID DMs before dropping the unresolved sender", async () => {
+    const config = {
+      channels: {
+        whatsapp: {
+          dmPolicy: "allowlist",
+          allowFrom: ["+111"],
+        },
+      },
+      messages: DEFAULT_MESSAGES_CFG,
+    };
+    const preAuthHandler = vi.fn();
+    clearInternalHooks();
+    setInternalHooksEnabled(true);
+    registerInternalHook("message:pre-auth", preAuthHandler);
+
+    const { onMessage, listener, sock } = await startWebInboxMonitor({
+      config,
+    });
+
+    try {
+      sock.ev.emit(
+        "messages.upsert",
+        createNotifyUpsert(
+          createDmMessage({
+            id: "unmapped-lid-preauth",
+            remoteJid: "999@lid",
+            conversation: "Memento Mori",
+          }),
+        ),
+      );
+      await settleInboundWork();
+
+      expect(preAuthHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "message",
+          action: "pre-auth",
+          sessionKey: "",
+          context: expect.objectContaining({
+            senderId: "999@lid",
+            content: "Memento Mori",
+            channelId: "whatsapp",
+            accountId: DEFAULT_ACCOUNT_ID,
+            conversationId: "999@lid",
+          }),
+        }),
+      );
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(sock.sendMessage).not.toHaveBeenCalled();
+      expect(sock.readMessages).not.toHaveBeenCalled();
+    } finally {
+      clearInternalHooks();
+      await listener.close();
+    }
   });
 
   it("skips read receipts in self-chat mode", async () => {

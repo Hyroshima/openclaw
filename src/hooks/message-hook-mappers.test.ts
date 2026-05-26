@@ -10,10 +10,12 @@ import {
   toPluginInboundClaimEvent,
   toPluginInboundClaimContext,
   toInternalMessagePreprocessedContext,
+  toInternalMessagePreAuthContext,
   toInternalMessageReceivedContext,
   toInternalMessageSentContext,
   toInternalMessageTranscribedContext,
   toPluginMessageContext,
+  toPluginMessagePreAuthEvent,
   toPluginMessageReceivedEvent,
   toPluginMessageSentEvent,
 } from "./message-hook-mappers.js";
@@ -259,6 +261,33 @@ describe("message hook mappers", () => {
     expect(internalMetadata?.senderUsername).toBe("userone");
     expect(internalMetadata?.senderE164).toBe("+15551234567");
     expect(internalMetadata?.topicName).toBe("Deployments");
+  });
+
+  it("maps pre-auth payloads without session or run correlation", () => {
+    const canonical = deriveInboundMessageHookContext(
+      makeInboundCtx({
+        BodyForCommands: "Memento Mori",
+        SenderId: "+15551234567",
+        SenderName: "Visitor",
+        SessionKey: undefined,
+      }),
+    );
+
+    expect(toPluginMessagePreAuthEvent(canonical)).toMatchObject({
+      channelId: "demo-chat",
+      senderId: "+15551234567",
+      senderName: "Visitor",
+      content: "Memento Mori",
+      accountId: "acc-1",
+      conversationId: "demo-chat:chat:456",
+    });
+    expect(toPluginMessageContext(canonical).sessionKey).toBeUndefined();
+    expect(toInternalMessagePreAuthContext(canonical)).toMatchObject({
+      channelId: "demo-chat",
+      senderId: "+15551234567",
+      senderName: "Visitor",
+      content: "Memento Mori",
+    });
   });
 
   it("passes frozen trace copies to inbound claim and sent plugin hooks", () => {

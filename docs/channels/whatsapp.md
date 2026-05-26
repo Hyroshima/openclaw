@@ -247,6 +247,17 @@ You can scope the opt-in to one account:
 Only enable this for plugins you trust to receive inbound WhatsApp message
 content and identifiers.
 
+WhatsApp also emits the observation-only `message_pre_auth` plugin hook and
+`message:pre-auth` internal hook for direct messages from senders that are not
+already admitted by `dmPolicy` and `allowFrom`. This pre-auth event fires before
+the channel blocks the message or sends any pairing challenge, carries the raw
+text available before preprocessing plus sender/profile fields, creates no agent
+session, never runs the model, and has no reply path to the sender. Use it for
+silent operator-side workflows such as phrase-gated access requests.
+If WhatsApp only exposes an unmapped LID for a not-yet-admitted sender, the
+pre-auth `senderId` falls back to that raw WhatsApp JID and E.164 phone metadata
+is omitted.
+
 ## Access control and activation
 
 <Tabs>

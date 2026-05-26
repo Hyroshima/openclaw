@@ -9,6 +9,7 @@ import type {
   PluginHookInboundClaimContext,
   PluginHookInboundClaimEvent,
   PluginHookMessageContext,
+  PluginHookMessagePreAuthEvent,
   PluginHookMessageReceivedEvent,
   PluginHookMessageSentEvent,
 } from "../plugins/hook-message.types.js";
@@ -18,6 +19,7 @@ import {
 } from "../shared/string-coerce.js";
 import type {
   MessagePreprocessedHookContext,
+  MessagePreAuthHookContext,
   MessageReceivedHookContext,
   MessageSentHookContext,
   MessageTranscribedHookContext,
@@ -390,6 +392,33 @@ export function toPluginMessageReceivedEvent(
   return event;
 }
 
+export function toPluginMessagePreAuthEvent(
+  canonical: CanonicalInboundMessageHookContext,
+): PluginHookMessagePreAuthEvent {
+  return {
+    channelId: canonical.channelId,
+    senderId: canonical.senderId ?? canonical.from,
+    content: canonical.content,
+    accountId: canonical.accountId,
+    conversationId: canonical.conversationId,
+    timestamp: canonical.timestamp,
+    messageId: canonical.messageId,
+    senderName: canonical.senderName,
+    senderUsername: canonical.senderUsername,
+    metadata: {
+      from: canonical.from,
+      to: canonical.to,
+      provider: canonical.provider,
+      surface: canonical.surface,
+      originatingChannel: canonical.originatingChannel,
+      originatingTo: canonical.originatingTo,
+      senderE164: canonical.senderE164,
+      groupId: canonical.groupId,
+      topicName: canonical.topicName,
+    },
+  };
+}
+
 export function toPluginMessageSentEvent(
   canonical: CanonicalSentMessageHookContext,
 ): PluginHookMessageSentEvent {
@@ -428,6 +457,31 @@ export function toInternalMessageReceivedContext(
       senderE164: canonical.senderE164,
       guildId: canonical.guildId,
       channelName: canonical.channelName,
+      topicName: canonical.topicName,
+    },
+  };
+}
+
+export function toInternalMessagePreAuthContext(
+  canonical: CanonicalInboundMessageHookContext,
+): MessagePreAuthHookContext {
+  return {
+    senderId: canonical.senderId ?? canonical.from,
+    content: canonical.content,
+    channelId: canonical.channelId,
+    accountId: canonical.accountId,
+    conversationId: canonical.conversationId,
+    timestamp: canonical.timestamp,
+    messageId: canonical.messageId,
+    senderName: canonical.senderName,
+    senderUsername: canonical.senderUsername,
+    metadata: {
+      from: canonical.from,
+      to: canonical.to,
+      provider: canonical.provider,
+      surface: canonical.surface,
+      senderE164: canonical.senderE164,
+      groupId: canonical.groupId,
       topicName: canonical.topicName,
     },
   };
