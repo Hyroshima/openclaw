@@ -72,8 +72,8 @@ Each hook is a directory containing two files:
 
 ```
 my-hook/
-â”œâ”€â”€ HOOK.md          # Metadata + documentation
-â””â”€â”€ handler.ts       # Handler implementation
+├── HOOK.md          # Metadata + documentation
+└── handler.ts       # Handler implementation
 ```
 
 ### HOOK.md format
@@ -83,7 +83,7 @@ my-hook/
 name: my-hook
 description: "Short description of what this hook does"
 metadata:
-  { "openclaw": { "emoji": "ðŸ”—", "events": ["command:new"], "requires": { "bins": ["node"] } } }
+  { "openclaw": { "emoji": "🔗", "events": ["command:new"], "requires": { "bins": ["node"] } } }
 ---
 
 # My Hook
@@ -386,5 +386,5 @@ Check for missing binaries (PATH), environment variables, config values, or OS c
 
 - [CLI Reference: hooks](/cli/hooks)
 - [Webhooks](/automation/cron-jobs#webhooks)
-- [Plugin hooks](/plugins/hooks) â€” in-process plugin lifecycle hooks
+- [Plugin hooks](/plugins/hooks) — in-process plugin lifecycle hooks
 - [Configuration](/gateway/configuration-reference#hooks)
