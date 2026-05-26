@@ -65,6 +65,7 @@ type SenderContext = {
   id?: string;
   name?: string;
   e164?: string;
+  group?: string;
 };
 
 type ReplyDeliveryInfo = { kind: ReplyLifecycleKind };
@@ -336,6 +337,7 @@ export function buildWhatsAppInboundContext(params: {
     SenderName: params.sender.name,
     SenderId: params.sender.id ?? params.sender.e164,
     SenderE164: params.sender.e164,
+    SenderGroup: params.sender.group,
     CommandAuthorized: params.commandAuthorized,
     CommandTurn: params.commandTurn,
     CommandSource:

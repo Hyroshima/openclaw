@@ -200,7 +200,9 @@ describe("message hook mappers", () => {
       parentSpanId: "3333333333333333",
     };
     const canonical = {
-      ...deriveInboundMessageHookContext(makeInboundCtx({ TopicName: "Deployments" })),
+      ...deriveInboundMessageHookContext(
+        makeInboundCtx({ TopicName: "Deployments", SenderGroup: "friends" }),
+      ),
       runId: "run-1",
       trace,
       callDepth: 2,
@@ -217,6 +219,7 @@ describe("message hook mappers", () => {
       runId: "run-1",
       messageId: "msg-1",
       senderId: "sender-1",
+      senderGroup: "friends",
       trace,
       traceId: "11111111111111111111111111111111",
       spanId: "2222222222222222",
@@ -236,6 +239,7 @@ describe("message hook mappers", () => {
       threadId: 42,
       messageId: "msg-1",
       senderId: "sender-1",
+      senderGroup: "friends",
       sessionKey: "session-1",
       runId: "run-1",
       trace: receivedEvent.trace,
@@ -245,6 +249,7 @@ describe("message hook mappers", () => {
     });
     expect(receivedMetadata?.messageId).toBe("msg-1");
     expect(receivedMetadata?.senderName).toBe("User One");
+    expect(receivedMetadata?.senderGroup).toBe("friends");
     expect(receivedMetadata?.threadId).toBe(42);
     expect(receivedMetadata?.topicName).toBe("Deployments");
     const internalReceived = toInternalMessageReceivedContext(canonical);
@@ -260,6 +265,7 @@ describe("message hook mappers", () => {
     });
     expect(internalMetadata?.senderUsername).toBe("userone");
     expect(internalMetadata?.senderE164).toBe("+15551234567");
+    expect(internalMetadata?.senderGroup).toBe("friends");
     expect(internalMetadata?.topicName).toBe("Deployments");
   });
 
@@ -343,6 +349,7 @@ describe("message hook mappers", () => {
       sessionKey: "session-1",
       parentConversationId: undefined,
       senderId: "sender-1",
+      senderGroup: undefined,
       messageId: "msg-1",
       runId: undefined,
       trace: undefined,
@@ -374,6 +381,7 @@ describe("message hook mappers", () => {
       sessionKey: "session-1",
       parentConversationId: undefined,
       senderId: "sender-1",
+      senderGroup: undefined,
       messageId: "msg-1",
       runId: undefined,
       trace: undefined,

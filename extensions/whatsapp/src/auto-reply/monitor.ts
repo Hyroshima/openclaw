@@ -18,6 +18,7 @@ import {
 } from "openclaw/plugin-sdk/runtime-env";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/system-event-runtime";
 import { resolveWhatsAppAccount, resolveWhatsAppMediaMaxBytes } from "../accounts.js";
+import { normalizeWhatsAppAllowFromEntryNumbers } from "../allow-from-groups.js";
 import { WHATSAPP_AUTH_UNSTABLE_CODE, WhatsAppAuthUnstableError } from "../auth-store.js";
 import {
   WhatsAppConnectionController,
@@ -88,7 +89,7 @@ function resolveWebMonitorConfigSnapshot(params: {
         ...params.cfg.channels?.whatsapp,
         ackReaction: account.ackReaction,
         messagePrefix: account.messagePrefix,
-        allowFrom: account.allowFrom,
+        allowFrom: normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
         groupAllowFrom: account.groupAllowFrom,
         groupPolicy: account.groupPolicy,
         textChunkLimit: account.textChunkLimit,
@@ -374,7 +375,7 @@ export async function monitorWebChannel(
             if (minutesSinceLastMessage && minutesSinceLastMessage > 30) {
               heartbeatLogger.warn(
                 logData,
-                "⚠️ web gateway heartbeat - no messages in 30+ minutes",
+                "âš ï¸ web gateway heartbeat - no messages in 30+ minutes",
               );
             } else {
               heartbeatLogger.info(logData, "web gateway heartbeat");
@@ -442,7 +443,7 @@ export async function monitorWebChannel(
             "web reconnect: 428 during opening; retrying",
           );
           runtime.error(
-            `WhatsApp Web connection closed during setup (status 428). Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
+            `WhatsApp Web connection closed during setup (status 428). Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
           );
           try {
             await controller.waitBeforeRetry(retryDecision.delayMs ?? 0);
@@ -485,7 +486,7 @@ export async function monitorWebChannel(
           "web reconnect: auth state still stabilizing during inbox attach; retrying",
         );
         runtime.error(
-          `WhatsApp auth state is still stabilizing. Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} for inbox attach in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
+          `WhatsApp auth state is still stabilizing. Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} for inbox attach in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
         );
         try {
           await controller.waitBeforeRetry(retryDecision.delayMs ?? 0);
@@ -708,8 +709,8 @@ export async function monitorWebChannel(
         "web reconnect: scheduling retry",
       );
       const reconnectMessage = isWatchdogRecoveryReconnect
-        ? `WhatsApp Web watchdog is recovering a stale connection (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(decision.delayMs ?? 0)}.`
-        : `WhatsApp Web connection closed (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(decision.delayMs ?? 0)}… (${decision.normalized.errorText})`;
+        ? `WhatsApp Web watchdog is recovering a stale connection (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} in ${formatDurationPrecise(decision.delayMs ?? 0)}.`
+        : `WhatsApp Web connection closed (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} in ${formatDurationPrecise(decision.delayMs ?? 0)}â€¦ (${decision.normalized.errorText})`;
       if (isWatchdogRecoveryReconnect) {
         runtime.log(warn(reconnectMessage));
       } else {

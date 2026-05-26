@@ -26,6 +26,16 @@ type AllowlistAccountResolver<ResolvedAccount> = (params: {
   cfg: OpenClawConfig;
   accountId?: string | null;
 }) => ResolvedAccount;
+type AllowlistConfigEntryReader = (entry: unknown) => string | undefined;
+type AllowlistConfigEntryFormatter = (params: { entry: string; accessGroup?: string }) => unknown;
+
+function readDefaultAllowlistConfigEntry(entry: unknown): string | undefined {
+  if (typeof entry !== "string" && typeof entry !== "number") {
+    return undefined;
+  }
+  const value = String(entry).trim();
+  return value || undefined;
+}
 
 const DM_ALLOWLIST_CONFIG_PATHS: AllowlistConfigPaths = {
   readPaths: [["allowFrom"]],
@@ -258,26 +268,37 @@ function applyAccountScopedAllowlistConfigEdit(params: {
   accountId?: string | null;
   action: "add" | "remove";
   entry: string;
+  accessGroup?: string;
   normalize: (values: Array<string | number>) => string[];
   paths: AllowlistConfigPaths;
+  readConfigEntry?: AllowlistConfigEntryReader;
+  formatConfigEntry?: AllowlistConfigEntryFormatter;
 }): NonNullable<Awaited<ReturnType<NonNullable<ChannelAllowlistAdapter["applyConfigEdit"]>>>> {
   const resolvedTarget = resolveAccountScopedWriteTarget(
     params.parsedConfig,
     params.channelId,
     params.accountId,
   );
-  const existing: string[] = [];
+  const readConfigEntry = params.readConfigEntry ?? readDefaultAllowlistConfigEntry;
+  const existing: unknown[] = [];
+  const existingKeys = new Set<string>();
   for (const path of params.paths.readPaths) {
     const existingRaw = getNestedValue(resolvedTarget.target, path);
     if (!Array.isArray(existingRaw)) {
       continue;
     }
     for (const entry of existingRaw) {
-      const value = String(entry).trim();
-      if (!value || existing.includes(value)) {
+      const value = readConfigEntry(entry);
+      if (!value) {
         continue;
       }
-      existing.push(value);
+      const normalized = params.normalize([value]);
+      const key = normalized.length > 0 ? normalized.join("\u0000") : value;
+      if (existingKeys.has(key)) {
+        continue;
+      }
+      existingKeys.add(key);
+      existing.push(entry);
     }
   }
 
@@ -286,7 +307,10 @@ function applyAccountScopedAllowlistConfigEdit(params: {
     return { kind: "invalid-entry" };
   }
 
-  const existingNormalized = params.normalize(existing);
+  const existingNormalized = existing.flatMap((entry) => {
+    const value = readConfigEntry(entry);
+    return value ? params.normalize([value]) : [];
+  });
   const shouldMatch = (value: string) => normalizedEntry.includes(value);
 
   let changed = false;
@@ -294,14 +318,19 @@ function applyAccountScopedAllowlistConfigEdit(params: {
   const configHasEntry = existingNormalized.some((value) => shouldMatch(value));
   if (params.action === "add") {
     if (!configHasEntry) {
-      next = [...existing, params.entry.trim()];
+      const formatted = params.formatConfigEntry?.({
+        entry: params.entry.trim(),
+        accessGroup: params.accessGroup,
+      });
+      next = [...existing, formatted ?? params.entry.trim()];
       changed = true;
     }
   } else {
-    const keep: string[] = [];
+    const keep: unknown[] = [];
     for (const entry of existing) {
-      const normalized = params.normalize([entry]);
-      if (normalized.some((value) => shouldMatch(value))) {
+      const value = readConfigEntry(entry);
+      const normalized = value ? params.normalize([value]) : [];
+      if (normalized.some((entryValue) => shouldMatch(entryValue))) {
         changed = true;
         continue;
       }
@@ -328,14 +357,15 @@ function applyAccountScopedAllowlistConfigEdit(params: {
     writeTarget: resolvedTarget.writeTarget,
   };
 }
-
 /** Build the default account-scoped allowlist editor used by channel plugins with config-backed lists. */
 export function buildAccountScopedAllowlistConfigEditor(params: {
   channelId: ChannelId;
   normalize: AllowlistNormalizer;
   resolvePaths: (scope: "dm" | "group") => AllowlistConfigPaths | null;
+  readConfigEntry?: AllowlistConfigEntryReader;
+  formatConfigEntry?: AllowlistConfigEntryFormatter;
 }): NonNullable<ChannelAllowlistAdapter["applyConfigEdit"]> {
-  return ({ cfg, parsedConfig, accountId, scope, action, entry }) => {
+  return ({ cfg, parsedConfig, accountId, scope, action, entry, accessGroup }) => {
     const paths = params.resolvePaths(scope);
     if (!paths) {
       return null;
@@ -346,8 +376,11 @@ export function buildAccountScopedAllowlistConfigEditor(params: {
       accountId,
       action,
       entry,
+      accessGroup,
       normalize: (values) => params.normalize({ cfg, accountId, values }),
       paths,
+      readConfigEntry: params.readConfigEntry,
+      formatConfigEntry: params.formatConfigEntry,
     });
   };
 }
@@ -358,6 +391,8 @@ function buildAccountAllowlistAdapter<ResolvedAccount>(params: {
   normalize: AllowlistNormalizer;
   supportsScope: NonNullable<ChannelAllowlistAdapter["supportsScope"]>;
   resolvePaths: (scope: "dm" | "group") => AllowlistConfigPaths | null;
+  readConfigEntry?: AllowlistConfigEntryReader;
+  formatConfigEntry?: AllowlistConfigEntryFormatter;
   readConfig: (
     account: ResolvedAccount,
     context: { cfg: OpenClawConfig; accountId?: string | null },
@@ -371,6 +406,8 @@ function buildAccountAllowlistAdapter<ResolvedAccount>(params: {
       channelId: params.channelId,
       normalize: params.normalize,
       resolvePaths: params.resolvePaths,
+      readConfigEntry: params.readConfigEntry,
+      formatConfigEntry: params.formatConfigEntry,
     }),
   };
 }
@@ -388,6 +425,8 @@ export function buildDmGroupAccountAllowlistAdapter<ResolvedAccount>(params: {
   resolveDmPolicy?: (account: ResolvedAccount) => string | null | undefined;
   resolveGroupPolicy?: (account: ResolvedAccount) => string | null | undefined;
   resolveGroupOverrides?: (account: ResolvedAccount) => AllowlistGroupOverride[] | undefined;
+  readConfigEntry?: AllowlistConfigEntryReader;
+  formatConfigEntry?: AllowlistConfigEntryFormatter;
 }): Pick<ChannelAllowlistAdapter, "supportsScope" | "readConfig" | "applyConfigEdit"> {
   return buildAccountAllowlistAdapter({
     channelId: params.channelId,
@@ -402,6 +441,8 @@ export function buildDmGroupAccountAllowlistAdapter<ResolvedAccount>(params: {
       groupPolicy: params.resolveGroupPolicy?.(account) ?? undefined,
       groupOverrides: params.resolveGroupOverrides?.(account),
     }),
+    readConfigEntry: params.readConfigEntry,
+    formatConfigEntry: params.formatConfigEntry,
   });
 }
 
@@ -416,6 +457,8 @@ export function buildLegacyDmAccountAllowlistAdapter<ResolvedAccount>(params: {
   ) => Array<string | number> | null | undefined;
   resolveGroupPolicy?: (account: ResolvedAccount) => string | null | undefined;
   resolveGroupOverrides?: (account: ResolvedAccount) => AllowlistGroupOverride[] | undefined;
+  readConfigEntry?: AllowlistConfigEntryReader;
+  formatConfigEntry?: AllowlistConfigEntryFormatter;
 }): Pick<ChannelAllowlistAdapter, "supportsScope" | "readConfig" | "applyConfigEdit"> {
   return buildAccountAllowlistAdapter({
     channelId: params.channelId,
@@ -428,5 +471,7 @@ export function buildLegacyDmAccountAllowlistAdapter<ResolvedAccount>(params: {
       groupPolicy: params.resolveGroupPolicy?.(account) ?? undefined,
       groupOverrides: params.resolveGroupOverrides?.(account),
     }),
+    readConfigEntry: params.readConfigEntry,
+    formatConfigEntry: params.formatConfigEntry,
   });
 }

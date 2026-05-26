@@ -3,6 +3,7 @@ import {
   normalizeMentionText,
 } from "openclaw/plugin-sdk/channel-mention-gating";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import { normalizeWhatsAppAllowFromEntryNumbers } from "../allow-from-groups.js";
 import {
   getComparableIdentityValues,
   getMentionIdentities,
@@ -27,7 +28,10 @@ export type MentionTargets = {
 
 export function buildMentionConfig(cfg: OpenClawConfig, agentId?: string): MentionConfig {
   const mentionRegexes = buildMentionRegexes(cfg, agentId);
-  return { mentionRegexes, allowFrom: cfg.channels?.whatsapp?.allowFrom };
+  return {
+    mentionRegexes,
+    allowFrom: normalizeWhatsAppAllowFromEntryNumbers(cfg.channels?.whatsapp?.allowFrom ?? []),
+  };
 }
 
 export function resolveMentionTargets(msg: WebInboundMsg, authDir?: string): MentionTargets {

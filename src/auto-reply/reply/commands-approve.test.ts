@@ -16,7 +16,15 @@ import { handleApproveCommand } from "./commands-approve.js";
 import type { HandleCommandsParams } from "./commands-types.js";
 
 const resolveApprovalOverGatewayMock = vi.hoisted(() => vi.fn());
+const readConfigFileSnapshotMock = vi.hoisted(() => vi.fn());
+const transformConfigFileWithRetryMock = vi.hoisted(() => vi.fn());
+const validateConfigObjectWithPluginsMock = vi.hoisted(() => vi.fn());
 
+vi.mock("../../config/config.js", () => ({
+  readConfigFileSnapshot: readConfigFileSnapshotMock,
+  validateConfigObjectWithPlugins: validateConfigObjectWithPluginsMock,
+  transformConfigFileWithRetry: transformConfigFileWithRetryMock,
+}));
 vi.mock("../../infra/approval-gateway-resolver.js", () => ({
   resolveApprovalOverGateway: resolveApprovalOverGatewayMock,
 }));
@@ -400,6 +408,43 @@ function setApprovePluginRegistry(): void {
   );
 }
 
+function createGroupedWhatsAppApproveTestPlugin(applyConfigEdit = vi.fn()): ChannelPlugin {
+  return {
+    ...whatsappApproveTestPlugin,
+    allowlist: {
+      accessGroups: {
+        groups: ["trusted", "partner", "friends", "family", "work", "restricted"],
+        defaultGroup: "restricted",
+      },
+      applyConfigEdit: applyConfigEdit.mockImplementation(
+        ({ parsedConfig, entry, accessGroup }) => {
+          if (!/^\+?\d+$/.test(entry)) {
+            return { kind: "invalid-entry" };
+          }
+          const channels = (parsedConfig.channels ??= {}) as Record<string, unknown>;
+          const whatsapp = (channels.whatsapp ??= {}) as { allowFrom?: unknown[] };
+          const allowFrom = Array.isArray(whatsapp.allowFrom) ? whatsapp.allowFrom : [];
+          const exists = allowFrom.some(
+            (value) =>
+              typeof value === "object" &&
+              value !== null &&
+              !Array.isArray(value) &&
+              (value as { number?: unknown }).number === entry,
+          );
+          if (!exists) {
+            whatsapp.allowFrom = [...allowFrom, { number: entry, group: accessGroup }];
+          }
+          return {
+            kind: "ok" as const,
+            changed: !exists,
+            pathLabel: "channels.whatsapp.allowFrom",
+            writeTarget: { kind: "channel" as const, scope: { channelId: "whatsapp" as const } },
+          };
+        },
+      ),
+    },
+  };
+}
 function buildApproveParams(
   commandBodyNormalized: string,
   cfg: OpenClawConfig,
@@ -435,6 +480,17 @@ function buildApproveParams(
 describe("handleApproveCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readConfigFileSnapshotMock.mockResolvedValue({
+      valid: true,
+      parsed: {},
+    });
+    validateConfigObjectWithPluginsMock.mockImplementation((config) => ({ ok: true, config }));
+    transformConfigFileWithRetryMock.mockImplementation(async (options) => {
+      const snapshot = await readConfigFileSnapshotMock();
+      const currentConfig = structuredClone(snapshot.parsed ?? {});
+      const transformed = await options.transform(currentConfig);
+      return { nextConfig: transformed.nextConfig };
+    });
     setApprovePluginRegistry();
   });
 
@@ -486,6 +542,75 @@ describe("handleApproveCommand", () => {
     expect(result?.reply?.text).toContain("Usage: /approve");
   });
 
+  it("adds WhatsApp allowFrom entries with an explicit group", async () => {
+    const applyConfigEdit = vi.fn();
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "whatsapp",
+          plugin: createGroupedWhatsAppApproveTestPlugin(applyConfigEdit),
+          source: "test",
+        },
+      ]),
+    );
+    readConfigFileSnapshotMock.mockResolvedValue({
+      valid: true,
+      parsed: { channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: [] } } },
+    });
+    const params = buildApproveParams(
+      "/approve +15550002222 friends",
+      {
+        commands: { text: true, config: true },
+        channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: [] } },
+      } as OpenClawConfig,
+      { SenderId: "owner" },
+    );
+    params.command.senderIsOwner = true;
+
+    const result = await handleApproveCommand(params, true);
+
+    expect(result?.shouldContinue).toBe(false);
+    expect(result?.reply?.text).toContain("DM allowlist approved (friends)");
+    expect(applyConfigEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "dm",
+        action: "add",
+        entry: "+15550002222",
+        accessGroup: "friends",
+      }),
+    );
+    expect(applyConfigEdit.mock.calls[0][0].parsedConfig.channels.whatsapp.allowFrom).toEqual([
+      { number: "+15550002222", group: "friends" },
+    ]);
+  });
+
+  it("defaults WhatsApp /approve allowFrom entries to restricted", async () => {
+    const applyConfigEdit = vi.fn();
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "whatsapp",
+          plugin: createGroupedWhatsAppApproveTestPlugin(applyConfigEdit),
+          source: "test",
+        },
+      ]),
+    );
+    const params = buildApproveParams(
+      "/approve +15550002222",
+      {
+        commands: { text: true, config: true },
+        channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: [] } },
+      } as OpenClawConfig,
+      { SenderId: "owner" },
+    );
+    params.command.senderIsOwner = true;
+
+    await handleApproveCommand(params, true);
+
+    expect(applyConfigEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ accessGroup: "restricted" }),
+    );
+  });
   it("submits approval", async () => {
     resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
     const result = await handleApproveCommand(

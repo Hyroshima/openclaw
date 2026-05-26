@@ -2,6 +2,9 @@ import {
   getChannelPlugin,
   resolveChannelApprovalCapability,
 } from "../../channels/plugins/index.js";
+import type { ChannelId } from "../../channels/plugins/types.public.js";
+import { normalizeChannelId } from "../../channels/registry.js";
+import { readConfigFileSnapshot } from "../../config/config.js";
 import { logVerbose } from "../../globals.js";
 import { isApprovalNotFoundError } from "../../infra/approval-errors.js";
 import { resolveApprovalOverGateway } from "../../infra/approval-gateway-resolver.js";
@@ -9,8 +12,19 @@ import { resolveApprovalCommandAuthorization } from "../../infra/channel-approva
 import { formatErrorMessage } from "../../infra/errors.js";
 import { normalizeLowercaseStringOrEmpty } from "../../shared/string-coerce.js";
 import { resolveChannelAccountId } from "./channel-context.js";
-import { requireGatewayClientScope } from "./command-gates.js";
-import type { CommandHandler } from "./commands-types.js";
+import {
+  rejectNonOwnerCommand,
+  rejectUnauthorizedCommand,
+  requireCommandFlagEnabled,
+  requireGatewayClientScope,
+} from "./command-gates.js";
+import type {
+  CommandHandler,
+  CommandHandlerResult,
+  HandleCommandsParams,
+} from "./commands-types.js";
+import { applyAllowlistConfigMutation, AutoReplyConfigMutationError } from "./config-mutations.js";
+import { resolveConfigWriteDeniedText } from "./config-write-authorization.js";
 
 const COMMAND_REGEX = /^\/?approve(?:\s|$)/i;
 const FOREIGN_COMMAND_MENTION_REGEX = /^\/approve@([^\s]+)(?:\s|$)/i;
@@ -122,6 +136,163 @@ function resolveApprovalAuthorizationError(params: {
   );
 }
 
+type ParsedAllowlistApproveCommand =
+  | { ok: true; entry: string; group: string }
+  | { ok: false; error: string };
+
+type AllowlistAccessGroups = {
+  groups: readonly string[];
+  defaultGroup: string;
+};
+
+function parseAllowlistApproveCommand(
+  raw: string,
+  accessGroups: AllowlistAccessGroups,
+): ParsedAllowlistApproveCommand | null {
+  const trimmed = raw.trim();
+  const commandMatch = trimmed.match(COMMAND_REGEX);
+  if (!commandMatch) {
+    return null;
+  }
+  const tokens = trimmed.slice(commandMatch[0].length).trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 1 || tokens.length > 2) {
+    return null;
+  }
+  const entry = tokens[0]?.trim();
+  if (!entry) {
+    return null;
+  }
+  const group = normalizeLowercaseStringOrEmpty(tokens[1] ?? accessGroups.defaultGroup);
+  if (!group || !accessGroups.groups.includes(group)) {
+    return {
+      ok: false,
+      error: `⚠️ Invalid allowlist group. Use one of: ${accessGroups.groups.join(", ")}.`,
+    };
+  }
+  return { ok: true, entry, group };
+}
+
+function resolveCommandChannelId(params: HandleCommandsParams): ChannelId | undefined {
+  return params.command.channelId ?? normalizeChannelId(params.command.channel) ?? undefined;
+}
+
+async function handleAllowlistApproveCommand(params: {
+  commandParams: HandleCommandsParams;
+  channelId: ChannelId;
+  accountId?: string | null;
+  accessGroups: AllowlistAccessGroups;
+}): Promise<CommandHandlerResult | null> {
+  const plugin = getChannelPlugin(params.channelId);
+  const parsed = parseAllowlistApproveCommand(
+    params.commandParams.command.commandBodyNormalized,
+    params.accessGroups,
+  );
+  if (!parsed) {
+    return null;
+  }
+  if (!parsed.ok) {
+    return { shouldContinue: false, reply: { text: parsed.error } };
+  }
+
+  const unauthorized = rejectUnauthorizedCommand(params.commandParams, "/approve allowlist");
+  if (unauthorized) {
+    return unauthorized;
+  }
+  const nonOwner = rejectNonOwnerCommand(params.commandParams, "/approve allowlist");
+  if (nonOwner) {
+    return nonOwner;
+  }
+  const missingAdminScope = requireGatewayClientScope(params.commandParams, {
+    label: "/approve allowlist",
+    allowedScopes: ["operator.admin"],
+    missingText: "❌ /approve <sender> requires operator.admin for gateway clients.",
+  });
+  if (missingAdminScope) {
+    return missingAdminScope;
+  }
+  const disabled = requireCommandFlagEnabled(params.commandParams.cfg, {
+    label: "/approve allowlist edits",
+    configKey: "config",
+    disabledVerb: "are",
+  });
+  if (disabled) {
+    return disabled;
+  }
+  const applyConfigEdit = plugin?.allowlist?.applyConfigEdit;
+  if (!applyConfigEdit) {
+    return {
+      shouldContinue: false,
+      reply: { text: `⚠️ ${params.channelId} does not support grouped allowlist approvals.` },
+    };
+  }
+
+  const snapshot = await readConfigFileSnapshot();
+  if (!snapshot.valid || !snapshot.parsed || typeof snapshot.parsed !== "object") {
+    return {
+      shouldContinue: false,
+      reply: { text: "⚠️ Config file is invalid; fix it before using /approve allowlist." },
+    };
+  }
+  const parsedConfig = structuredClone(snapshot.parsed as Record<string, unknown>);
+  const editResult = await applyConfigEdit({
+    cfg: params.commandParams.cfg,
+    parsedConfig,
+    accountId: params.accountId,
+    scope: "dm",
+    action: "add",
+    entry: parsed.entry,
+    accessGroup: parsed.group,
+  });
+  if (!editResult) {
+    return {
+      shouldContinue: false,
+      reply: { text: `⚠️ ${params.channelId} does not support DM allowlist approvals.` },
+    };
+  }
+  if (editResult.kind === "invalid-entry") {
+    return { shouldContinue: false, reply: { text: "⚠️ Invalid allowlist approval target." } };
+  }
+  const deniedText = resolveConfigWriteDeniedText({
+    cfg: params.commandParams.cfg,
+    channel: params.commandParams.command.channel,
+    channelId: params.channelId,
+    accountId: params.accountId ?? undefined,
+    gatewayClientScopes: params.commandParams.ctx.GatewayClientScopes,
+    target: editResult.writeTarget,
+  });
+  if (deniedText) {
+    return { shouldContinue: false, reply: { text: deniedText } };
+  }
+
+  if (editResult.changed) {
+    try {
+      await applyAllowlistConfigMutation({
+        cfg: params.commandParams.cfg,
+        accountId: params.accountId,
+        scope: "dm",
+        action: "add",
+        entry: parsed.entry,
+        accessGroup: parsed.group,
+        applyConfigEdit,
+      });
+    } catch (error) {
+      if (error instanceof AutoReplyConfigMutationError) {
+        return { shouldContinue: false, reply: { text: `⚠️ ${error.message}` } };
+      }
+      throw error;
+    }
+  }
+
+  if (!editResult.changed) {
+    return { shouldContinue: false, reply: { text: "✅ Already allowlisted." } };
+  }
+  return {
+    shouldContinue: false,
+    reply: {
+      text: `✅ DM allowlist approved (${parsed.group}): ${editResult.pathLabel}.`,
+    },
+  };
+}
 export const handleApproveCommand: CommandHandler = async (params, allowTextCommands) => {
   if (!allowTextCommands) {
     return null;
@@ -131,19 +302,34 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
   if (!parsed) {
     return null;
   }
-  if (!parsed.ok) {
-    return { shouldContinue: false, reply: { text: parsed.error } };
-  }
-
-  const isPluginId = parsed.id.startsWith("plugin:");
   const effectiveAccountId = resolveChannelAccountId({
     cfg: params.cfg,
     ctx: params.ctx,
     command: params.command,
   });
-  const approvalCapability = resolveChannelApprovalCapability(
-    getChannelPlugin(params.command.channel),
-  );
+  const commandChannelId = resolveCommandChannelId(params);
+  const channelPlugin = commandChannelId
+    ? getChannelPlugin(commandChannelId)
+    : getChannelPlugin(params.command.channel);
+
+  if (!parsed.ok) {
+    const accessGroups = channelPlugin?.allowlist?.accessGroups;
+    if (commandChannelId && accessGroups) {
+      const allowlistResult = await handleAllowlistApproveCommand({
+        commandParams: params,
+        channelId: commandChannelId,
+        accountId: effectiveAccountId,
+        accessGroups,
+      });
+      if (allowlistResult) {
+        return allowlistResult;
+      }
+    }
+    return { shouldContinue: false, reply: { text: parsed.error } };
+  }
+
+  const isPluginId = parsed.id.startsWith("plugin:");
+  const approvalCapability = resolveChannelApprovalCapability(channelPlugin);
   const approveCommandBehavior = approvalCapability?.resolveApproveCommandBehavior?.({
     cfg: params.cfg,
     accountId: effectiveAccountId,

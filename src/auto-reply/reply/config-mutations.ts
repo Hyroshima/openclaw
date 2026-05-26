@@ -101,6 +101,7 @@ type ApplyAllowlistConfigEdit = (params: {
   scope: "dm" | "group";
   action: "add" | "remove";
   entry: string;
+  accessGroup?: string;
 }) => MaybePromise<AllowlistConfigEditResult>;
 
 export async function applyAllowlistConfigMutation(params: {
@@ -109,6 +110,7 @@ export async function applyAllowlistConfigMutation(params: {
   scope: "dm" | "group";
   action: "add" | "remove";
   entry: string;
+  accessGroup?: string;
   applyConfigEdit: ApplyAllowlistConfigEdit;
 }): Promise<void> {
   await transformConfigFileWithRetry({
@@ -123,6 +125,7 @@ export async function applyAllowlistConfigMutation(params: {
         scope: params.scope,
         action: params.action,
         entry: params.entry,
+        accessGroup: params.accessGroup,
       });
       if (!latestEditResult || latestEditResult.kind === "invalid-entry") {
         throw new AutoReplyConfigMutationError("Invalid allowlist entry.");

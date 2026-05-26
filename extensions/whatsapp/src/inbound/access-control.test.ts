@@ -234,6 +234,35 @@ describe("WhatsApp dmPolicy precedence", () => {
     expect(runMessagePreAuthMock).not.toHaveBeenCalled();
   });
 
+  it("allows grouped allowFrom entries for DM allowlist access", async () => {
+    const cfg = {
+      channels: {
+        whatsapp: {
+          dmPolicy: "allowlist",
+          allowFrom: [{ number: "+15550001111", group: "friends" }],
+        },
+      },
+    };
+    setAccessControlTestConfig(cfg);
+
+    const result = await checkInboundAccessControl({
+      cfg: getAccessControlTestConfig() as never,
+      accountId: "default",
+      from: "+15550001111",
+      selfE164: "+15550009999",
+      senderE164: "+15550001111",
+      content: "hello",
+      group: false,
+      pushName: "Known",
+      isFromMe: false,
+      sock: { sendMessage: sendMessageMock },
+      remoteJid: "15550001111@s.whatsapp.net",
+    });
+    const commandAuthorized = await checkCommandAuthorizedForDm({ cfg });
+
+    expect(result.allowed).toBe(true);
+    expect(commandAuthorized).toBe(true);
+  });
   it("inherits channel-level dmPolicy when account-level dmPolicy is unset", async () => {
     // Account has allowFrom set, but no dmPolicy override. Should inherit the channel default.
     // With dmPolicy=allowlist, unauthorized senders are silently blocked.

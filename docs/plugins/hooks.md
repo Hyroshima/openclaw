@@ -398,7 +398,7 @@ even when the channel payload has no visible text/caption. Rewriting that
 media caption.
 
 Message hook contexts expose stable correlation fields when available:
-`ctx.sessionKey`, `ctx.runId`, `ctx.messageId`, `ctx.senderId`, `ctx.trace`,
+`ctx.sessionKey`, `ctx.runId`, `ctx.messageId`, `ctx.senderId`, `ctx.senderGroup`, `ctx.trace`,
 `ctx.traceId`, `ctx.spanId`, `ctx.parentSpanId`, and `ctx.callDepth`. Prefer
 these first-class fields before reading legacy metadata.
 
@@ -455,7 +455,7 @@ before the next major release:
 - **Plaintext channel envelopes** in `inbound_claim` and `message_received`
   handlers. Read `BodyForAgent` and the structured user-context blocks
   instead of parsing flat envelope text. See
-  [Plaintext channel envelopes → BodyForAgent](/plugins/sdk-migration#active-deprecations).
+  [Plaintext channel envelopes â†’ BodyForAgent](/plugins/sdk-migration#active-deprecations).
 - **`before_agent_start`** remains for compatibility. New plugins should use
   `before_model_resolve` and `before_prompt_build` instead of the combined
   phase.
@@ -467,8 +467,8 @@ before the next major release:
 
 For the full list - memory capability registration, provider thinking
 profile, external auth providers, provider discovery types, task runtime
-accessors, and the `command-auth` → `command-status` rename - see
-[Plugin SDK migration → Active deprecations](/plugins/sdk-migration#active-deprecations).
+accessors, and the `command-auth` â†’ `command-status` rename - see
+[Plugin SDK migration â†’ Active deprecations](/plugins/sdk-migration#active-deprecations).
 
 ## Related
 

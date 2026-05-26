@@ -72,8 +72,8 @@ Each hook is a directory containing two files:
 
 ```
 my-hook/
-├── HOOK.md          # Metadata + documentation
-└── handler.ts       # Handler implementation
+â”œâ”€â”€ HOOK.md          # Metadata + documentation
+â””â”€â”€ handler.ts       # Handler implementation
 ```
 
 ### HOOK.md format
@@ -83,7 +83,7 @@ my-hook/
 name: my-hook
 description: "Short description of what this hook does"
 metadata:
-  { "openclaw": { "emoji": "🔗", "events": ["command:new"], "requires": { "bins": ["node"] } } }
+  { "openclaw": { "emoji": "ðŸ”—", "events": ["command:new"], "requires": { "bins": ["node"] } } }
 ---
 
 # My Hook
@@ -132,7 +132,7 @@ reply channel and ignore pushed messages.
 
 **Command events** (`command:new`, `command:reset`): `context.sessionEntry`, `context.previousSessionEntry`, `context.commandSource`, `context.workspaceDir`, `context.cfg`.
 
-**Message events** (`message:received`): `context.from`, `context.content`, `context.channelId`, `context.metadata` (provider-specific data including `senderId`, `senderName`, `guildId`). `context.content` prefers a nonblank command body for command-like messages, then falls back to the raw inbound body and generic body; it does not include agent-only enrichment such as thread history or link summaries.
+**Message events** (`message:received`): `context.from`, `context.content`, `context.channelId`, `context.metadata` (provider-specific data including `senderId`, `senderName`, `senderGroup`, `guildId`). `context.content` prefers a nonblank command body for command-like messages, then falls back to the raw inbound body and generic body; it does not include agent-only enrichment such as thread history or link summaries.
 
 **Message events** (`message:pre-auth`): `context.senderId`, `context.senderName`, `context.content`, `context.channelId`, `context.accountId`, `context.conversationId`, `context.messageId`, and `context.metadata`. This event fires for supported direct-message senders that are not already admitted, before the channel blocks the message or sends any pairing challenge. It is observation-only: OpenClaw does not create an agent session, does not run the model, ignores `event.messages`, and does not reply to the sender.
 
@@ -386,5 +386,5 @@ Check for missing binaries (PATH), environment variables, config values, or OS c
 
 - [CLI Reference: hooks](/cli/hooks)
 - [Webhooks](/automation/cron-jobs#webhooks)
-- [Plugin hooks](/plugins/hooks) — in-process plugin lifecycle hooks
+- [Plugin hooks](/plugins/hooks) â€” in-process plugin lifecycle hooks
 - [Configuration](/gateway/configuration-reference#hooks)

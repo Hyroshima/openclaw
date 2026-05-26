@@ -669,6 +669,10 @@ export type ChannelApprovalCapability = ChannelApprovalAdapter & {
 };
 
 export type ChannelAllowlistAdapter = {
+  accessGroups?: {
+    groups: readonly string[];
+    defaultGroup: string;
+  };
   applyConfigEdit?: (params: {
     cfg: OpenClawConfig;
     parsedConfig: Record<string, unknown>;
@@ -676,6 +680,7 @@ export type ChannelAllowlistAdapter = {
     scope: "dm" | "group";
     action: "add" | "remove";
     entry: string;
+    accessGroup?: string;
   }) =>
     | {
         kind: "ok";

@@ -269,7 +269,23 @@ is omitted.
     - `open` (requires `allowFrom` to include `"*"`)
     - `disabled`
 
-    `allowFrom` accepts E.164-style numbers (normalized internally).
+    `allowFrom` accepts E.164-style numbers (normalized internally). It also accepts grouped entries:
+
+    ```json
+    {
+      "channels": {
+        "whatsapp": {
+          "dmPolicy": "allowlist",
+          "allowFrom": [
+            "+15551234567",
+            { "number": "+15557654321", "group": "friends" }
+          ]
+        }
+      }
+    }
+    ```
+
+    Supported groups are `trusted`, `partner`, `friends`, `family`, `work`, and `restricted`. Grouped entries still authorize the sender like the legacy string form, and admitted WhatsApp turns include the sender group in message context as `SenderGroup` and hook context metadata as `senderGroup`.
 
     `allowFrom` is a DM sender access-control list. It does not gate explicit outbound sends to WhatsApp group JIDs or `@newsletter` channel JIDs.
 
@@ -281,6 +297,7 @@ is omitted.
     - scheduled automation and heartbeat recipient fallback use explicit delivery targets or configured `allowFrom`; DM pairing approvals are not implicit cron or heartbeat recipients
     - if no allowlist is configured, the linked self number is allowed by default
     - OpenClaw never auto-pairs outbound `fromMe` DMs (messages you send to yourself from the linked device)
+    - `/approve +15557654321` writes a grouped `allowFrom` entry with group `restricted`; `/approve +15557654321 friends` writes group `friends`
 
   </Tab>
 

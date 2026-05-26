@@ -1,0 +1,1717 @@
+diff --git a/docs/automation/hooks.md b/docs/automation/hooks.md
+index 33367c46a4..f25e136809 100644
+--- a/docs/automation/hooks.md
++++ b/docs/automation/hooks.md
+@@ -72,8 +72,8 @@ Each hook is a directory containing two files:
+ 
+ ```
+ my-hook/
+-├── HOOK.md          # Metadata + documentation
+-└── handler.ts       # Handler implementation
++â”œâ”€â”€ HOOK.md          # Metadata + documentation
++â””â”€â”€ handler.ts       # Handler implementation
+ ```
+ 
+ ### HOOK.md format
+@@ -83,7 +83,7 @@ my-hook/
+ name: my-hook
+ description: "Short description of what this hook does"
+ metadata:
+-  { "openclaw": { "emoji": "🔗", "events": ["command:new"], "requires": { "bins": ["node"] } } }
++  { "openclaw": { "emoji": "ðŸ”—", "events": ["command:new"], "requires": { "bins": ["node"] } } }
+ ---
+ 
+ # My Hook
+@@ -132,7 +132,7 @@ reply channel and ignore pushed messages.
+ 
+ **Command events** (`command:new`, `command:reset`): `context.sessionEntry`, `context.previousSessionEntry`, `context.commandSource`, `context.workspaceDir`, `context.cfg`.
+ 
+-**Message events** (`message:received`): `context.from`, `context.content`, `context.channelId`, `context.metadata` (provider-specific data including `senderId`, `senderName`, `guildId`). `context.content` prefers a nonblank command body for command-like messages, then falls back to the raw inbound body and generic body; it does not include agent-only enrichment such as thread history or link summaries.
++**Message events** (`message:received`): `context.from`, `context.content`, `context.channelId`, `context.metadata` (provider-specific data including `senderId`, `senderName`, `senderGroup`, `guildId`). `context.content` prefers a nonblank command body for command-like messages, then falls back to the raw inbound body and generic body; it does not include agent-only enrichment such as thread history or link summaries.
+ 
+ **Message events** (`message:pre-auth`): `context.senderId`, `context.senderName`, `context.content`, `context.channelId`, `context.accountId`, `context.conversationId`, `context.messageId`, and `context.metadata`. This event fires for supported direct-message senders that are not already admitted, before the channel blocks the message or sends any pairing challenge. It is observation-only: OpenClaw does not create an agent session, does not run the model, ignores `event.messages`, and does not reply to the sender.
+ 
+@@ -386,5 +386,5 @@ Check for missing binaries (PATH), environment variables, config values, or OS c
+ 
+ - [CLI Reference: hooks](/cli/hooks)
+ - [Webhooks](/automation/cron-jobs#webhooks)
+-- [Plugin hooks](/plugins/hooks) — in-process plugin lifecycle hooks
++- [Plugin hooks](/plugins/hooks) â€” in-process plugin lifecycle hooks
+ - [Configuration](/gateway/configuration-reference#hooks)
+diff --git a/docs/channels/whatsapp.md b/docs/channels/whatsapp.md
+index ef4b18c909..206723f671 100644
+--- a/docs/channels/whatsapp.md
++++ b/docs/channels/whatsapp.md
+@@ -269,7 +269,23 @@ is omitted.
+     - `open` (requires `allowFrom` to include `"*"`)
+     - `disabled`
+ 
+-    `allowFrom` accepts E.164-style numbers (normalized internally).
++    `allowFrom` accepts E.164-style numbers (normalized internally). It also accepts grouped entries:
++
++    ```json
++    {
++      "channels": {
++        "whatsapp": {
++          "dmPolicy": "allowlist",
++          "allowFrom": [
++            "+15551234567",
++            { "number": "+15557654321", "group": "friends" }
++          ]
++        }
++      }
++    }
++    ```
++
++    Supported groups are `trusted`, `partner`, `friends`, `family`, `work`, and `restricted`. Grouped entries still authorize the sender like the legacy string form, and admitted WhatsApp turns include the sender group in message context as `SenderGroup` and hook context metadata as `senderGroup`.
+ 
+     `allowFrom` is a DM sender access-control list. It does not gate explicit outbound sends to WhatsApp group JIDs or `@newsletter` channel JIDs.
+ 
+@@ -281,6 +297,7 @@ is omitted.
+     - scheduled automation and heartbeat recipient fallback use explicit delivery targets or configured `allowFrom`; DM pairing approvals are not implicit cron or heartbeat recipients
+     - if no allowlist is configured, the linked self number is allowed by default
+     - OpenClaw never auto-pairs outbound `fromMe` DMs (messages you send to yourself from the linked device)
++    - `/approve +15557654321` writes a grouped `allowFrom` entry with group `restricted`; `/approve +15557654321 friends` writes group `friends`
+ 
+   </Tab>
+ 
+diff --git a/docs/plugins/hooks.md b/docs/plugins/hooks.md
+index 7d6fc8ef9f..8046e975f7 100644
+--- a/docs/plugins/hooks.md
++++ b/docs/plugins/hooks.md
+@@ -398,7 +398,7 @@ even when the channel payload has no visible text/caption. Rewriting that
+ media caption.
+ 
+ Message hook contexts expose stable correlation fields when available:
+-`ctx.sessionKey`, `ctx.runId`, `ctx.messageId`, `ctx.senderId`, `ctx.trace`,
++`ctx.sessionKey`, `ctx.runId`, `ctx.messageId`, `ctx.senderId`, `ctx.senderGroup`, `ctx.trace`,
+ `ctx.traceId`, `ctx.spanId`, `ctx.parentSpanId`, and `ctx.callDepth`. Prefer
+ these first-class fields before reading legacy metadata.
+ 
+@@ -455,7 +455,7 @@ before the next major release:
+ - **Plaintext channel envelopes** in `inbound_claim` and `message_received`
+   handlers. Read `BodyForAgent` and the structured user-context blocks
+   instead of parsing flat envelope text. See
+-  [Plaintext channel envelopes → BodyForAgent](/plugins/sdk-migration#active-deprecations).
++  [Plaintext channel envelopes â†’ BodyForAgent](/plugins/sdk-migration#active-deprecations).
+ - **`before_agent_start`** remains for compatibility. New plugins should use
+   `before_model_resolve` and `before_prompt_build` instead of the combined
+   phase.
+@@ -467,8 +467,8 @@ before the next major release:
+ 
+ For the full list - memory capability registration, provider thinking
+ profile, external auth providers, provider discovery types, task runtime
+-accessors, and the `command-auth` → `command-status` rename - see
+-[Plugin SDK migration → Active deprecations](/plugins/sdk-migration#active-deprecations).
++accessors, and the `command-auth` â†’ `command-status` rename - see
++[Plugin SDK migration â†’ Active deprecations](/plugins/sdk-migration#active-deprecations).
+ 
+ ## Related
+ 
+diff --git a/extensions/whatsapp/src/accounts.ts b/extensions/whatsapp/src/accounts.ts
+index aa8302d38c..62b45f5060 100644
+--- a/extensions/whatsapp/src/accounts.ts
++++ b/extensions/whatsapp/src/accounts.ts
+@@ -16,6 +16,7 @@ import {
+   resolveDefaultWhatsAppAccountId,
+ } from "./account-ids.js";
+ import type { WhatsAppAccountConfig } from "./account-types.js";
++import type { WhatsAppAllowFromEntry } from "./allow-from-groups.js";
+ import { hasWebCredsRegularFileSync, hasWebCredsSync } from "./creds-files.js";
+ 
+ export { listWhatsAppAccountIds, resolveDefaultWhatsAppAccountId } from "./account-ids.js";
+@@ -30,7 +31,7 @@ export type ResolvedWhatsAppAccount = {
+   authDir: string;
+   isLegacyAuthDir: boolean;
+   selfChatMode?: boolean;
+-  allowFrom?: string[];
++  allowFrom?: WhatsAppAllowFromEntry[];
+   groupAllowFrom?: string[];
+   groupPolicy?: GroupPolicy;
+   dmPolicy?: DmPolicy;
+diff --git a/extensions/whatsapp/src/action-runtime-target-auth.ts b/extensions/whatsapp/src/action-runtime-target-auth.ts
+index aba1f0cbda..d7d3264aeb 100644
+--- a/extensions/whatsapp/src/action-runtime-target-auth.ts
++++ b/extensions/whatsapp/src/action-runtime-target-auth.ts
+@@ -1,6 +1,7 @@
+ import { ToolAuthorizationError } from "openclaw/plugin-sdk/channel-actions";
+ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+ import { resolveWhatsAppAccount } from "./accounts.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "./allow-from-groups.js";
+ import { resolveWhatsAppOutboundTarget } from "./resolve-outbound-target.js";
+ 
+ export function resolveAuthorizedWhatsAppOutboundTarget(params: {
+@@ -15,7 +16,7 @@ export function resolveAuthorizedWhatsAppOutboundTarget(params: {
+   });
+   const resolution = resolveWhatsAppOutboundTarget({
+     to: params.chatJid,
+-    allowFrom: account.allowFrom ?? [],
++    allowFrom: normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+     mode: "implicit",
+   });
+   if (!resolution.ok) {
+diff --git a/extensions/whatsapp/src/approval-auth.ts b/extensions/whatsapp/src/approval-auth.ts
+index 40874ca492..f432917897 100644
+--- a/extensions/whatsapp/src/approval-auth.ts
++++ b/extensions/whatsapp/src/approval-auth.ts
+@@ -3,6 +3,7 @@ import {
+   resolveApprovalApprovers,
+ } from "openclaw/plugin-sdk/approval-auth-runtime";
+ import { resolveWhatsAppAccount } from "./accounts.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "./allow-from-groups.js";
+ import { normalizeWhatsAppTarget } from "./normalize.js";
+ 
+ type ApprovalKind = "exec" | "plugin";
+@@ -25,7 +26,7 @@ export function getWhatsAppApprovalApprovers(params: {
+ }): string[] {
+   const account = resolveWhatsAppAccount({ cfg: params.cfg, accountId: params.accountId });
+   return resolveApprovalApprovers({
+-    allowFrom: account.allowFrom,
++    allowFrom: normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+     normalizeApprover: normalizeWhatsAppApproverEntry,
+   });
+ }
+diff --git a/extensions/whatsapp/src/auto-reply/mentions.ts b/extensions/whatsapp/src/auto-reply/mentions.ts
+index ef296816f4..22e6c26b1e 100644
+--- a/extensions/whatsapp/src/auto-reply/mentions.ts
++++ b/extensions/whatsapp/src/auto-reply/mentions.ts
+@@ -3,6 +3,7 @@ import {
+   normalizeMentionText,
+ } from "openclaw/plugin-sdk/channel-mention-gating";
+ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "../allow-from-groups.js";
+ import {
+   getComparableIdentityValues,
+   getMentionIdentities,
+@@ -27,7 +28,10 @@ export type MentionTargets = {
+ 
+ export function buildMentionConfig(cfg: OpenClawConfig, agentId?: string): MentionConfig {
+   const mentionRegexes = buildMentionRegexes(cfg, agentId);
+-  return { mentionRegexes, allowFrom: cfg.channels?.whatsapp?.allowFrom };
++  return {
++    mentionRegexes,
++    allowFrom: normalizeWhatsAppAllowFromEntryNumbers(cfg.channels?.whatsapp?.allowFrom ?? []),
++  };
+ }
+ 
+ export function resolveMentionTargets(msg: WebInboundMsg, authDir?: string): MentionTargets {
+diff --git a/extensions/whatsapp/src/auto-reply/monitor.ts b/extensions/whatsapp/src/auto-reply/monitor.ts
+index c56719b5c5..b35cc62aec 100644
+--- a/extensions/whatsapp/src/auto-reply/monitor.ts
++++ b/extensions/whatsapp/src/auto-reply/monitor.ts
+@@ -18,6 +18,7 @@ import {
+ } from "openclaw/plugin-sdk/runtime-env";
+ import { enqueueSystemEvent } from "openclaw/plugin-sdk/system-event-runtime";
+ import { resolveWhatsAppAccount, resolveWhatsAppMediaMaxBytes } from "../accounts.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "../allow-from-groups.js";
+ import { WHATSAPP_AUTH_UNSTABLE_CODE, WhatsAppAuthUnstableError } from "../auth-store.js";
+ import {
+   WhatsAppConnectionController,
+@@ -88,7 +89,7 @@ function resolveWebMonitorConfigSnapshot(params: {
+         ...params.cfg.channels?.whatsapp,
+         ackReaction: account.ackReaction,
+         messagePrefix: account.messagePrefix,
+-        allowFrom: account.allowFrom,
++        allowFrom: normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+         groupAllowFrom: account.groupAllowFrom,
+         groupPolicy: account.groupPolicy,
+         textChunkLimit: account.textChunkLimit,
+@@ -374,7 +375,7 @@ export async function monitorWebChannel(
+             if (minutesSinceLastMessage && minutesSinceLastMessage > 30) {
+               heartbeatLogger.warn(
+                 logData,
+-                "⚠️ web gateway heartbeat - no messages in 30+ minutes",
++                "âš ï¸ web gateway heartbeat - no messages in 30+ minutes",
+               );
+             } else {
+               heartbeatLogger.info(logData, "web gateway heartbeat");
+@@ -442,7 +443,7 @@ export async function monitorWebChannel(
+             "web reconnect: 428 during opening; retrying",
+           );
+           runtime.error(
+-            `WhatsApp Web connection closed during setup (status 428). Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
++            `WhatsApp Web connection closed during setup (status 428). Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
+           );
+           try {
+             await controller.waitBeforeRetry(retryDecision.delayMs ?? 0);
+@@ -485,7 +486,7 @@ export async function monitorWebChannel(
+           "web reconnect: auth state still stabilizing during inbox attach; retrying",
+         );
+         runtime.error(
+-          `WhatsApp auth state is still stabilizing. Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} for inbox attach in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
++          `WhatsApp auth state is still stabilizing. Retry ${retryDecision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} for inbox attach in ${formatDurationPrecise(retryDecision.delayMs ?? 0)}.`,
+         );
+         try {
+           await controller.waitBeforeRetry(retryDecision.delayMs ?? 0);
+@@ -708,8 +709,8 @@ export async function monitorWebChannel(
+         "web reconnect: scheduling retry",
+       );
+       const reconnectMessage = isWatchdogRecoveryReconnect
+-        ? `WhatsApp Web watchdog is recovering a stale connection (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(decision.delayMs ?? 0)}.`
+-        : `WhatsApp Web connection closed (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(decision.delayMs ?? 0)}… (${decision.normalized.errorText})`;
++        ? `WhatsApp Web watchdog is recovering a stale connection (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} in ${formatDurationPrecise(decision.delayMs ?? 0)}.`
++        : `WhatsApp Web connection closed (status ${decision.normalized.statusLabel}). Retry ${decision.reconnectAttempts}/${reconnectPolicy.maxAttempts || "âˆž"} in ${formatDurationPrecise(decision.delayMs ?? 0)}â€¦ (${decision.normalized.errorText})`;
+       if (isWatchdogRecoveryReconnect) {
+         runtime.log(warn(reconnectMessage));
+       } else {
+diff --git a/extensions/whatsapp/src/auto-reply/monitor/inbound-dispatch.ts b/extensions/whatsapp/src/auto-reply/monitor/inbound-dispatch.ts
+index 528c31dc0b..4ba1be3220 100644
+--- a/extensions/whatsapp/src/auto-reply/monitor/inbound-dispatch.ts
++++ b/extensions/whatsapp/src/auto-reply/monitor/inbound-dispatch.ts
+@@ -65,6 +65,7 @@ type SenderContext = {
+   id?: string;
+   name?: string;
+   e164?: string;
++  group?: string;
+ };
+ 
+ type ReplyDeliveryInfo = { kind: ReplyLifecycleKind };
+@@ -336,6 +337,7 @@ export function buildWhatsAppInboundContext(params: {
+     SenderName: params.sender.name,
+     SenderId: params.sender.id ?? params.sender.e164,
+     SenderE164: params.sender.e164,
++    SenderGroup: params.sender.group,
+     CommandAuthorized: params.commandAuthorized,
+     CommandTurn: params.commandTurn,
+     CommandSource:
+diff --git a/extensions/whatsapp/src/auto-reply/monitor/process-message.test.ts b/extensions/whatsapp/src/auto-reply/monitor/process-message.test.ts
+index df365cd363..c5719e5fa5 100644
+--- a/extensions/whatsapp/src/auto-reply/monitor/process-message.test.ts
++++ b/extensions/whatsapp/src/auto-reply/monitor/process-message.test.ts
+@@ -173,6 +173,7 @@ function makePolicy(account: ReturnType<typeof makeAccount>) {
+     isSamePhone: () => false,
+     resolveConversationGroupPolicy: () => "allowlist",
+     resolveConversationRequireMention: () => false,
++    resolveSenderGroup: () => undefined,
+   };
+ }
+ 
+@@ -277,6 +278,22 @@ describe("processMessage group system prompt wiring", () => {
+     ).toBe("from config");
+   });
+ 
++  it("passes grouped allowFrom access into the inbound context", async () => {
++    resolvePolicyMock.mockReturnValue({
++      ...makePolicy(makeAccount()),
++      resolveSenderGroup: () => "friends",
++    });
++
++    await callProcessMessage();
++
++    expect(buildContextMock.mock.calls[0][0]).toMatchObject({
++      sender: {
++        name: "Alice",
++        e164: "+15550002222",
++        group: "friends",
++      },
++    });
++  });
+   it("marks detected WhatsApp slash messages as text command turns", async () => {
+     resolvePolicyMock.mockReturnValue(makePolicy(makeAccount()));
+     isControlCommandMessageMock.mockReturnValue(true);
+@@ -378,6 +395,7 @@ describe("processMessage group system prompt wiring", () => {
+         threadId: undefined,
+         messageId: "msg1",
+         senderId: "+15550002222",
++        senderGroup: undefined,
+         sessionKey: baseRoute.sessionKey,
+         runId: undefined,
+         metadata: {
+@@ -392,6 +410,7 @@ describe("processMessage group system prompt wiring", () => {
+           senderName: "Alice",
+           senderUsername: undefined,
+           senderE164: "+15550002222",
++          senderGroup: undefined,
+           guildId: undefined,
+           channelName: undefined,
+           topicName: undefined,
+@@ -433,6 +452,7 @@ describe("processMessage group system prompt wiring", () => {
+           senderName: "Alice",
+           senderUsername: undefined,
+           senderE164: "+15550002222",
++          senderGroup: undefined,
+           guildId: undefined,
+           channelName: undefined,
+           topicName: undefined,
+diff --git a/extensions/whatsapp/src/auto-reply/monitor/process-message.ts b/extensions/whatsapp/src/auto-reply/monitor/process-message.ts
+index 21866c48d5..60c23516ea 100644
+--- a/extensions/whatsapp/src/auto-reply/monitor/process-message.ts
++++ b/extensions/whatsapp/src/auto-reply/monitor/process-message.ts
+@@ -397,6 +397,9 @@ export async function processMessage(params: {
+   }
+ 
+   const sender = getSenderIdentity(params.msg);
++  const senderGroup = inboundPolicy.resolveSenderGroup(
++    sender.e164 ?? (params.msg.chatType === "group" ? undefined : params.msg.from),
++  );
+   const visibleReplyTo = resolveVisibleWhatsAppReplyContext({
+     msg: params.msg,
+     authDir: account.authDir,
+@@ -477,6 +480,7 @@ export async function processMessage(params: {
+       id: getPrimaryIdentityId(sender) ?? undefined,
+       name: sender.name ?? undefined,
+       e164: sender.e164 ?? undefined,
++      group: senderGroup,
+     },
+     ...(audioTranscript !== undefined ? { transcript: audioTranscript } : {}),
+     ...(audioTranscript !== undefined ? { mediaTranscribedIndexes: [0] } : {}),
+diff --git a/extensions/whatsapp/src/channel.ts b/extensions/whatsapp/src/channel.ts
+index 4acef05969..8ffbb32227 100644
+--- a/extensions/whatsapp/src/channel.ts
++++ b/extensions/whatsapp/src/channel.ts
+@@ -8,6 +8,14 @@ import {
+ } from "openclaw/plugin-sdk/status-helpers";
+ import { resolveWhatsAppAccount, type ResolvedWhatsAppAccount } from "./accounts.js";
+ import { createWhatsAppLoginTool } from "./agent-tools-login.js";
++import {
++  createWhatsAppAllowFromEntry,
++  DEFAULT_WHATSAPP_ALLOW_FROM_GROUP,
++  isWhatsAppAllowFromGroup,
++  normalizeWhatsAppAllowFromEntryNumbers,
++  readWhatsAppAllowFromEntryNumber,
++  WHATSAPP_ALLOW_FROM_GROUPS,
++} from "./allow-from-groups.js";
+ import { whatsappApprovalCapability } from "./approval-native.js";
+ import type { WebChannelStatus } from "./auto-reply/types.js";
+ import {
+@@ -94,15 +102,27 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
+         },
+       }),
+       agentTools: () => [createWhatsAppLoginTool()],
+-      allowlist: buildDmGroupAccountAllowlistAdapter({
+-        channelId: "whatsapp",
+-        resolveAccount: resolveWhatsAppAccount,
+-        normalize: ({ values }) => formatWhatsAppConfigAllowFromEntries(values),
+-        resolveDmAllowFrom: (account) => account.allowFrom,
+-        resolveGroupAllowFrom: (account) => account.groupAllowFrom,
+-        resolveDmPolicy: (account) => account.dmPolicy,
+-        resolveGroupPolicy: (account) => account.groupPolicy,
+-      }),
++      allowlist: {
++        ...buildDmGroupAccountAllowlistAdapter({
++          channelId: "whatsapp",
++          resolveAccount: resolveWhatsAppAccount,
++          normalize: ({ values }) => formatWhatsAppConfigAllowFromEntries(values),
++          resolveDmAllowFrom: (account) =>
++            normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
++          resolveGroupAllowFrom: (account) => account.groupAllowFrom,
++          resolveDmPolicy: (account) => account.dmPolicy,
++          resolveGroupPolicy: (account) => account.groupPolicy,
++          readConfigEntry: readWhatsAppAllowFromEntryNumber,
++          formatConfigEntry: ({ entry, accessGroup }) =>
++            accessGroup && isWhatsAppAllowFromGroup(accessGroup)
++              ? createWhatsAppAllowFromEntry({ number: entry, group: accessGroup })
++              : entry,
++        }),
++        accessGroups: {
++          groups: WHATSAPP_ALLOW_FROM_GROUPS,
++          defaultGroup: DEFAULT_WHATSAPP_ALLOW_FROM_GROUP,
++        },
++      },
+       mentions: {
+         stripRegexes: ({ ctx }) => resolveWhatsAppMentionStripRegexes(ctx),
+       },
+@@ -296,7 +316,7 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
+               lastEventAt: runtime?.lastEventAt ?? null,
+               healthState: runtime?.healthState ?? undefined,
+               dmPolicy: account.dmPolicy,
+-              allowFrom: account.allowFrom,
++              allowFrom: normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+             },
+           };
+         },
+diff --git a/extensions/whatsapp/src/config-accessors.test.ts b/extensions/whatsapp/src/config-accessors.test.ts
+index d0b33f924e..fa86ecdfac 100644
+--- a/extensions/whatsapp/src/config-accessors.test.ts
++++ b/extensions/whatsapp/src/config-accessors.test.ts
+@@ -1,3 +1,4 @@
++import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+ import { describe, expect, it } from "vitest";
+ import {
+   formatWhatsAppConfigAllowFromEntries,
+@@ -7,7 +8,7 @@ import {
+ 
+ describe("whatsapp config accessors", () => {
+   it("reads merged allowFrom/defaultTo from resolved account config", () => {
+-    const cfg = {
++    const cfg: OpenClawConfig = {
+       channels: {
+         whatsapp: {
+           defaultTo: " root:chat ",
+@@ -15,14 +16,14 @@ describe("whatsapp config accessors", () => {
+           accounts: {
+             alt: {
+               defaultTo: " alt:chat ",
+-              allowFrom: ["+49222", "+49333"],
++              allowFrom: ["+49222", { number: "+49333", group: "friends" }],
+             },
+           },
+         },
+       },
+     };
+ 
+-    expect(resolveWhatsAppConfigAllowFrom({ cfg, accountId: "alt" })).toEqual(["+49222", "+49333"]);
++    expect(resolveWhatsAppConfigAllowFrom({ cfg, accountId: "alt" })).toEqual(["49222", "49333"]);
+     expect(resolveWhatsAppConfigDefaultTo({ cfg, accountId: "alt" })).toBe("alt:chat");
+   });
+ 
+diff --git a/extensions/whatsapp/src/config-accessors.ts b/extensions/whatsapp/src/config-accessors.ts
+index af6c2a2cb5..d0a4c9ffcc 100644
+--- a/extensions/whatsapp/src/config-accessors.ts
++++ b/extensions/whatsapp/src/config-accessors.ts
+@@ -1,16 +1,16 @@
+ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+ import { resolveWhatsAppAccount } from "./accounts.js";
+-import { normalizeWhatsAppAllowFromEntries } from "./normalize-target.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "./allow-from-groups.js";
+ 
+ export function resolveWhatsAppConfigAllowFrom(params: {
+   cfg: OpenClawConfig;
+   accountId?: string | null;
+ }): string[] {
+-  return [...(resolveWhatsAppAccount(params).allowFrom ?? [])];
++  return normalizeWhatsAppAllowFromEntryNumbers(resolveWhatsAppAccount(params).allowFrom ?? []);
+ }
+ 
+ export function formatWhatsAppConfigAllowFromEntries(allowFrom: Array<string | number>): string[] {
+-  return normalizeWhatsAppAllowFromEntries(allowFrom);
++  return normalizeWhatsAppAllowFromEntryNumbers(allowFrom);
+ }
+ 
+ export function resolveWhatsAppConfigDefaultTo(params: {
+diff --git a/extensions/whatsapp/src/config-schema.test.ts b/extensions/whatsapp/src/config-schema.test.ts
+index ce1e089866..f1c44767e2 100644
+--- a/extensions/whatsapp/src/config-schema.test.ts
++++ b/extensions/whatsapp/src/config-schema.test.ts
+@@ -29,6 +29,36 @@ describe("whatsapp config schema", () => {
+     }
+   });
+ 
++  it("accepts grouped allowFrom entries", () => {
++    const res = expectWhatsAppConfigValid({
++      dmPolicy: "allowlist",
++      allowFrom: ["+15550001111", { number: "+15550002222", group: "friends" }],
++      accounts: {
++        work: {
++          dmPolicy: "allowlist",
++          allowFrom: [{ number: "+15550003333", group: "trusted" }],
++        },
++      },
++    });
++
++    if (!res.success) {
++      return;
++    }
++    expect(res.data.allowFrom?.[1]).toEqual({ number: "+15550002222", group: "friends" });
++    expect(res.data.accounts?.work?.allowFrom?.[0]).toEqual({
++      number: "+15550003333",
++      group: "trusted",
++    });
++  });
++
++  it("rejects unknown grouped allowFrom groups", () => {
++    const res = WhatsAppConfigSchema.safeParse({
++      dmPolicy: "allowlist",
++      allowFrom: [{ number: "+15550002222", group: "vip" }],
++    });
++
++    expect(res.success).toBe(false);
++  });
+   it("defaults dm/group policy", () => {
+     const res = WhatsAppConfigSchema.safeParse({});
+ 
+diff --git a/extensions/whatsapp/src/directory-config.ts b/extensions/whatsapp/src/directory-config.ts
+index 16faf276f4..c4f1c5e821 100644
+--- a/extensions/whatsapp/src/directory-config.ts
++++ b/extensions/whatsapp/src/directory-config.ts
+@@ -5,6 +5,7 @@ import {
+ } from "openclaw/plugin-sdk/directory-config-runtime";
+ import { resolveMergedWhatsAppAccountConfig } from "./account-config.js";
+ import type { WhatsAppAccountConfig } from "./account-types.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "./allow-from-groups.js";
+ import { isWhatsAppGroupJid, normalizeWhatsAppTarget } from "./normalize.js";
+ 
+ type WhatsAppDirectoryAccount = WhatsAppAccountConfig & { accountId: string };
+@@ -20,7 +21,7 @@ export async function listWhatsAppDirectoryPeersFromConfig(params: DirectoryConf
+   return listResolvedDirectoryUserEntriesFromAllowFrom<WhatsAppDirectoryAccount>({
+     ...params,
+     resolveAccount: resolveWhatsAppDirectoryAccount,
+-    resolveAllowFrom: (account) => account.allowFrom,
++    resolveAllowFrom: (account) => normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+     normalizeId: (entry) => {
+       const normalized = normalizeWhatsAppTarget(entry);
+       if (!normalized || isWhatsAppGroupJid(normalized)) {
+diff --git a/extensions/whatsapp/src/inbound-policy.ts b/extensions/whatsapp/src/inbound-policy.ts
+index d757388618..9b83d1e089 100644
+--- a/extensions/whatsapp/src/inbound-policy.ts
++++ b/extensions/whatsapp/src/inbound-policy.ts
+@@ -12,6 +12,10 @@ import type {
+ import { resolveDefaultGroupPolicy } from "openclaw/plugin-sdk/runtime-group-policy";
+ import { resolveGroupSessionKey } from "openclaw/plugin-sdk/session-store-runtime";
+ import { resolveWhatsAppAccount, type ResolvedWhatsAppAccount } from "./accounts.js";
++import {
++  normalizeWhatsAppAllowFromEntryNumbers,
++  resolveWhatsAppAllowFromSenderGroup,
++} from "./allow-from-groups.js";
+ import { getSelfIdentity, getSenderIdentity } from "./identity.js";
+ import type { WebInboundMessage } from "./inbound/types.js";
+ import { resolveWhatsAppRuntimeGroupPolicy } from "./runtime-group-policy.js";
+@@ -29,6 +33,7 @@ export type ResolvedWhatsAppInboundPolicy = {
+   isSamePhone: (value?: string | null) => boolean;
+   resolveConversationGroupPolicy: (conversationId: string) => ChannelGroupPolicy;
+   resolveConversationRequireMention: (conversationId: string) => boolean;
++  resolveSenderGroup: (senderId?: string | null) => string | undefined;
+ };
+ 
+ function normalizeWhatsAppIngressPhone(value: string): string | null {
+@@ -83,7 +88,8 @@ export function resolveWhatsAppInboundPolicy(params: {
+     cfg: params.cfg,
+     accountId: params.accountId,
+   });
+-  const configuredAllowFrom = account.allowFrom ?? [];
++  const configuredAllowFromEntries = account.allowFrom ?? [];
++  const configuredAllowFrom = normalizeWhatsAppAllowFromEntryNumbers(configuredAllowFromEntries);
+   const dmPolicy = account.dmPolicy ?? "pairing";
+   const dmAllowFrom =
+     configuredAllowFrom.length > 0 ? configuredAllowFrom : params.selfE164 ? [params.selfE164] : [];
+@@ -130,6 +136,11 @@ export function resolveWhatsAppInboundPolicy(params: {
+         channel: "whatsapp",
+         groupId: resolveGroupConversationId(conversationId),
+       }),
++    resolveSenderGroup: (senderId) =>
++      resolveWhatsAppAllowFromSenderGroup({
++        allowFrom: configuredAllowFromEntries,
++        senderId,
++      }),
+   };
+ }
+ 
+diff --git a/extensions/whatsapp/src/inbound/access-control.test.ts b/extensions/whatsapp/src/inbound/access-control.test.ts
+index 5a11144387..a26f243bea 100644
+--- a/extensions/whatsapp/src/inbound/access-control.test.ts
++++ b/extensions/whatsapp/src/inbound/access-control.test.ts
+@@ -234,6 +234,35 @@ describe("WhatsApp dmPolicy precedence", () => {
+     expect(runMessagePreAuthMock).not.toHaveBeenCalled();
+   });
+ 
++  it("allows grouped allowFrom entries for DM allowlist access", async () => {
++    const cfg = {
++      channels: {
++        whatsapp: {
++          dmPolicy: "allowlist",
++          allowFrom: [{ number: "+15550001111", group: "friends" }],
++        },
++      },
++    };
++    setAccessControlTestConfig(cfg);
++
++    const result = await checkInboundAccessControl({
++      cfg: getAccessControlTestConfig() as never,
++      accountId: "default",
++      from: "+15550001111",
++      selfE164: "+15550009999",
++      senderE164: "+15550001111",
++      content: "hello",
++      group: false,
++      pushName: "Known",
++      isFromMe: false,
++      sock: { sendMessage: sendMessageMock },
++      remoteJid: "15550001111@s.whatsapp.net",
++    });
++    const commandAuthorized = await checkCommandAuthorizedForDm({ cfg });
++
++    expect(result.allowed).toBe(true);
++    expect(commandAuthorized).toBe(true);
++  });
+   it("inherits channel-level dmPolicy when account-level dmPolicy is unset", async () => {
+     // Account has allowFrom set, but no dmPolicy override. Should inherit the channel default.
+     // With dmPolicy=allowlist, unauthorized senders are silently blocked.
+diff --git a/extensions/whatsapp/src/setup-finalize.ts b/extensions/whatsapp/src/setup-finalize.ts
+index 9449565ab0..6f6c4c56f2 100644
+--- a/extensions/whatsapp/src/setup-finalize.ts
++++ b/extensions/whatsapp/src/setup-finalize.ts
+@@ -12,6 +12,7 @@ import {
+   resolveWhatsAppAccount,
+   resolveWhatsAppAuthDir,
+ } from "./accounts.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "./allow-from-groups.js";
+ import { hasWebCredsSync } from "./creds-files.js";
+ import {
+   normalizeWhatsAppAllowFromEntries,
+@@ -247,7 +248,7 @@ async function promptWhatsAppDmAccess(params: {
+   const accountId = params.accountId.trim() || DEFAULT_ACCOUNT_ID;
+   const account = resolveWhatsAppAccount({ cfg: params.cfg, accountId });
+   const existingPolicy = account.dmPolicy ?? "pairing";
+-  const existingAllowFrom = account.allowFrom ?? [];
++  const existingAllowFrom = normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []);
+   const existingLabel = existingAllowFrom.length > 0 ? existingAllowFrom.join(", ") : "unset";
+   const configPathPrefix = resolveWhatsAppConfigPathPrefix(params.cfg, accountId);
+   const policyKey = `${configPathPrefix}.dmPolicy`;
+diff --git a/extensions/whatsapp/src/setup-test-helpers.ts b/extensions/whatsapp/src/setup-test-helpers.ts
+index 23d2c9959a..18cc28e119 100644
+--- a/extensions/whatsapp/src/setup-test-helpers.ts
++++ b/extensions/whatsapp/src/setup-test-helpers.ts
+@@ -1,12 +1,16 @@
+ import { expect } from "vitest";
++import type { WhatsAppAllowFromEntry } from "../../../src/config/types.whatsapp.js";
+ 
+ type WhatsAppSetupConfig = {
+   channels?: {
+     whatsapp?: {
+       selfChatMode?: boolean;
+       dmPolicy?: string;
+-      allowFrom?: string[];
+-      accounts?: Record<string, { dmPolicy?: string; allowFrom?: string[]; authDir?: string }>;
++      allowFrom?: WhatsAppAllowFromEntry[];
++      accounts?: Record<
++        string,
++        { dmPolicy?: string; allowFrom?: WhatsAppAllowFromEntry[]; authDir?: string }
++      >;
+     };
+   };
+ };
+@@ -105,7 +109,7 @@ function expectWhatsAppDmAccess(
+   expected: {
+     selfChatMode: boolean;
+     dmPolicy: string;
+-    allowFrom?: string[];
++    allowFrom?: WhatsAppAllowFromEntry[];
+   },
+ ): void {
+   expect(cfg.channels?.whatsapp?.selfChatMode).toBe(expected.selfChatMode);
+diff --git a/extensions/whatsapp/src/shared.ts b/extensions/whatsapp/src/shared.ts
+index 6de2f069ea..3436d8e0bb 100644
+--- a/extensions/whatsapp/src/shared.ts
++++ b/extensions/whatsapp/src/shared.ts
+@@ -22,6 +22,7 @@ import {
+   resolveWhatsAppAccount,
+   type ResolvedWhatsAppAccount,
+ } from "./accounts.js";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "./allow-from-groups.js";
+ import { formatWhatsAppConfigAllowFromEntries } from "./config-accessors.js";
+ import { WhatsAppChannelConfigSchema } from "./config-schema.js";
+ import { whatsappDoctor } from "./doctor.js";
+@@ -59,7 +60,7 @@ const whatsappConfigAdapter = createScopedChannelConfigAdapter<ResolvedWhatsAppA
+   defaultAccountId: resolveDefaultWhatsAppAccountId,
+   clearBaseFields: [],
+   allowTopLevel: false,
+-  resolveAllowFrom: (account) => account.allowFrom,
++  resolveAllowFrom: (account) => normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+   formatAllowFrom: (allowFrom) => formatWhatsAppConfigAllowFromEntries(allowFrom),
+   resolveDefaultTo: (account) => account.defaultTo,
+ });
+@@ -67,7 +68,7 @@ const whatsappConfigAdapter = createScopedChannelConfigAdapter<ResolvedWhatsAppA
+ const whatsappResolveDmPolicy = createScopedDmSecurityResolver<ResolvedWhatsAppAccount>({
+   channelKey: WHATSAPP_CHANNEL,
+   resolvePolicy: (account) => account.dmPolicy,
+-  resolveAllowFrom: (account) => account.allowFrom,
++  resolveAllowFrom: (account) => normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+   policyPathSuffix: "dmPolicy",
+   normalizeEntry: (raw) => normalizeE164(raw),
+   inheritSharedDefaultsFromDefaultAccount: true,
+@@ -186,7 +187,7 @@ export function createWhatsAppPluginBase(params: {
+           extra: {
+             linked: Boolean(account.authDir),
+             dmPolicy: account.dmPolicy,
+-            allowFrom: account.allowFrom,
++            allowFrom: normalizeWhatsAppAllowFromEntryNumbers(account.allowFrom ?? []),
+           },
+         }),
+     },
+diff --git a/src/auto-reply/reply/commands-approve.test.ts b/src/auto-reply/reply/commands-approve.test.ts
+index 83225b8ed8..1c6b42c376 100644
+--- a/src/auto-reply/reply/commands-approve.test.ts
++++ b/src/auto-reply/reply/commands-approve.test.ts
+@@ -16,7 +16,15 @@ import { handleApproveCommand } from "./commands-approve.js";
+ import type { HandleCommandsParams } from "./commands-types.js";
+ 
+ const resolveApprovalOverGatewayMock = vi.hoisted(() => vi.fn());
++const readConfigFileSnapshotMock = vi.hoisted(() => vi.fn());
++const transformConfigFileWithRetryMock = vi.hoisted(() => vi.fn());
++const validateConfigObjectWithPluginsMock = vi.hoisted(() => vi.fn());
+ 
++vi.mock("../../config/config.js", () => ({
++  readConfigFileSnapshot: readConfigFileSnapshotMock,
++  validateConfigObjectWithPlugins: validateConfigObjectWithPluginsMock,
++  transformConfigFileWithRetry: transformConfigFileWithRetryMock,
++}));
+ vi.mock("../../infra/approval-gateway-resolver.js", () => ({
+   resolveApprovalOverGateway: resolveApprovalOverGatewayMock,
+ }));
+@@ -400,6 +408,43 @@ function setApprovePluginRegistry(): void {
+   );
+ }
+ 
++function createGroupedWhatsAppApproveTestPlugin(applyConfigEdit = vi.fn()): ChannelPlugin {
++  return {
++    ...whatsappApproveTestPlugin,
++    allowlist: {
++      accessGroups: {
++        groups: ["trusted", "partner", "friends", "family", "work", "restricted"],
++        defaultGroup: "restricted",
++      },
++      applyConfigEdit: applyConfigEdit.mockImplementation(
++        ({ parsedConfig, entry, accessGroup }) => {
++          if (!/^\+?\d+$/.test(entry)) {
++            return { kind: "invalid-entry" };
++          }
++          const channels = (parsedConfig.channels ??= {}) as Record<string, unknown>;
++          const whatsapp = (channels.whatsapp ??= {}) as { allowFrom?: unknown[] };
++          const allowFrom = Array.isArray(whatsapp.allowFrom) ? whatsapp.allowFrom : [];
++          const exists = allowFrom.some(
++            (value) =>
++              typeof value === "object" &&
++              value !== null &&
++              !Array.isArray(value) &&
++              (value as { number?: unknown }).number === entry,
++          );
++          if (!exists) {
++            whatsapp.allowFrom = [...allowFrom, { number: entry, group: accessGroup }];
++          }
++          return {
++            kind: "ok" as const,
++            changed: !exists,
++            pathLabel: "channels.whatsapp.allowFrom",
++            writeTarget: { kind: "channel" as const, scope: { channelId: "whatsapp" as const } },
++          };
++        },
++      ),
++    },
++  };
++}
+ function buildApproveParams(
+   commandBodyNormalized: string,
+   cfg: OpenClawConfig,
+@@ -435,6 +480,17 @@ function buildApproveParams(
+ describe("handleApproveCommand", () => {
+   beforeEach(() => {
+     vi.clearAllMocks();
++    readConfigFileSnapshotMock.mockResolvedValue({
++      valid: true,
++      parsed: {},
++    });
++    validateConfigObjectWithPluginsMock.mockImplementation((config) => ({ ok: true, config }));
++    transformConfigFileWithRetryMock.mockImplementation(async (options) => {
++      const snapshot = await readConfigFileSnapshotMock();
++      const currentConfig = structuredClone(snapshot.parsed ?? {});
++      const transformed = await options.transform(currentConfig);
++      return { nextConfig: transformed.nextConfig };
++    });
+     setApprovePluginRegistry();
+   });
+ 
+@@ -486,6 +542,75 @@ describe("handleApproveCommand", () => {
+     expect(result?.reply?.text).toContain("Usage: /approve");
+   });
+ 
++  it("adds WhatsApp allowFrom entries with an explicit group", async () => {
++    const applyConfigEdit = vi.fn();
++    setActivePluginRegistry(
++      createTestRegistry([
++        {
++          pluginId: "whatsapp",
++          plugin: createGroupedWhatsAppApproveTestPlugin(applyConfigEdit),
++          source: "test",
++        },
++      ]),
++    );
++    readConfigFileSnapshotMock.mockResolvedValue({
++      valid: true,
++      parsed: { channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: [] } } },
++    });
++    const params = buildApproveParams(
++      "/approve +15550002222 friends",
++      {
++        commands: { text: true, config: true },
++        channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: [] } },
++      } as OpenClawConfig,
++      { SenderId: "owner" },
++    );
++    params.command.senderIsOwner = true;
++
++    const result = await handleApproveCommand(params, true);
++
++    expect(result?.shouldContinue).toBe(false);
++    expect(result?.reply?.text).toContain("DM allowlist approved (friends)");
++    expect(applyConfigEdit).toHaveBeenCalledWith(
++      expect.objectContaining({
++        scope: "dm",
++        action: "add",
++        entry: "+15550002222",
++        accessGroup: "friends",
++      }),
++    );
++    expect(applyConfigEdit.mock.calls[0][0].parsedConfig.channels.whatsapp.allowFrom).toEqual([
++      { number: "+15550002222", group: "friends" },
++    ]);
++  });
++
++  it("defaults WhatsApp /approve allowFrom entries to restricted", async () => {
++    const applyConfigEdit = vi.fn();
++    setActivePluginRegistry(
++      createTestRegistry([
++        {
++          pluginId: "whatsapp",
++          plugin: createGroupedWhatsAppApproveTestPlugin(applyConfigEdit),
++          source: "test",
++        },
++      ]),
++    );
++    const params = buildApproveParams(
++      "/approve +15550002222",
++      {
++        commands: { text: true, config: true },
++        channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: [] } },
++      } as OpenClawConfig,
++      { SenderId: "owner" },
++    );
++    params.command.senderIsOwner = true;
++
++    await handleApproveCommand(params, true);
++
++    expect(applyConfigEdit).toHaveBeenCalledWith(
++      expect.objectContaining({ accessGroup: "restricted" }),
++    );
++  });
+   it("submits approval", async () => {
+     resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
+     const result = await handleApproveCommand(
+diff --git a/src/auto-reply/reply/commands-approve.ts b/src/auto-reply/reply/commands-approve.ts
+index 882adb5aa1..b3304af4ab 100644
+--- a/src/auto-reply/reply/commands-approve.ts
++++ b/src/auto-reply/reply/commands-approve.ts
+@@ -2,6 +2,9 @@ import {
+   getChannelPlugin,
+   resolveChannelApprovalCapability,
+ } from "../../channels/plugins/index.js";
++import type { ChannelId } from "../../channels/plugins/types.public.js";
++import { normalizeChannelId } from "../../channels/registry.js";
++import { readConfigFileSnapshot } from "../../config/config.js";
+ import { logVerbose } from "../../globals.js";
+ import { isApprovalNotFoundError } from "../../infra/approval-errors.js";
+ import { resolveApprovalOverGateway } from "../../infra/approval-gateway-resolver.js";
+@@ -9,8 +12,19 @@ import { resolveApprovalCommandAuthorization } from "../../infra/channel-approva
+ import { formatErrorMessage } from "../../infra/errors.js";
+ import { normalizeLowercaseStringOrEmpty } from "../../shared/string-coerce.js";
+ import { resolveChannelAccountId } from "./channel-context.js";
+-import { requireGatewayClientScope } from "./command-gates.js";
+-import type { CommandHandler } from "./commands-types.js";
++import {
++  rejectNonOwnerCommand,
++  rejectUnauthorizedCommand,
++  requireCommandFlagEnabled,
++  requireGatewayClientScope,
++} from "./command-gates.js";
++import type {
++  CommandHandler,
++  CommandHandlerResult,
++  HandleCommandsParams,
++} from "./commands-types.js";
++import { applyAllowlistConfigMutation, AutoReplyConfigMutationError } from "./config-mutations.js";
++import { resolveConfigWriteDeniedText } from "./config-write-authorization.js";
+ 
+ const COMMAND_REGEX = /^\/?approve(?:\s|$)/i;
+ const FOREIGN_COMMAND_MENTION_REGEX = /^\/approve@([^\s]+)(?:\s|$)/i;
+@@ -122,12 +136,57 @@ function resolveApprovalAuthorizationError(params: {
+   );
+ }
+ 
+-export const handleApproveCommand: CommandHandler = async (params, allowTextCommands) => {
+-  if (!allowTextCommands) {
++type ParsedAllowlistApproveCommand =
++  | { ok: true; entry: string; group: string }
++  | { ok: false; error: string };
++
++type AllowlistAccessGroups = {
++  groups: readonly string[];
++  defaultGroup: string;
++};
++
++function parseAllowlistApproveCommand(
++  raw: string,
++  accessGroups: AllowlistAccessGroups,
++): ParsedAllowlistApproveCommand | null {
++  const trimmed = raw.trim();
++  const commandMatch = trimmed.match(COMMAND_REGEX);
++  if (!commandMatch) {
+     return null;
+   }
+-  const normalized = params.command.commandBodyNormalized;
+-  const parsed = parseApproveCommand(normalized);
++  const tokens = trimmed.slice(commandMatch[0].length).trim().split(/\s+/).filter(Boolean);
++  if (tokens.length < 1 || tokens.length > 2) {
++    return null;
++  }
++  const entry = tokens[0]?.trim();
++  if (!entry) {
++    return null;
++  }
++  const group = normalizeLowercaseStringOrEmpty(tokens[1] ?? accessGroups.defaultGroup);
++  if (!group || !accessGroups.groups.includes(group)) {
++    return {
++      ok: false,
++      error: `⚠️ Invalid allowlist group. Use one of: ${accessGroups.groups.join(", ")}.`,
++    };
++  }
++  return { ok: true, entry, group };
++}
++
++function resolveCommandChannelId(params: HandleCommandsParams): ChannelId | undefined {
++  return params.command.channelId ?? normalizeChannelId(params.command.channel) ?? undefined;
++}
++
++async function handleAllowlistApproveCommand(params: {
++  commandParams: HandleCommandsParams;
++  channelId: ChannelId;
++  accountId?: string | null;
++  accessGroups: AllowlistAccessGroups;
++}): Promise<CommandHandlerResult | null> {
++  const plugin = getChannelPlugin(params.channelId);
++  const parsed = parseAllowlistApproveCommand(
++    params.commandParams.command.commandBodyNormalized,
++    params.accessGroups,
++  );
+   if (!parsed) {
+     return null;
+   }
+@@ -135,15 +194,142 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
+     return { shouldContinue: false, reply: { text: parsed.error } };
+   }
+ 
+-  const isPluginId = parsed.id.startsWith("plugin:");
++  const unauthorized = rejectUnauthorizedCommand(params.commandParams, "/approve allowlist");
++  if (unauthorized) {
++    return unauthorized;
++  }
++  const nonOwner = rejectNonOwnerCommand(params.commandParams, "/approve allowlist");
++  if (nonOwner) {
++    return nonOwner;
++  }
++  const missingAdminScope = requireGatewayClientScope(params.commandParams, {
++    label: "/approve allowlist",
++    allowedScopes: ["operator.admin"],
++    missingText: "❌ /approve <sender> requires operator.admin for gateway clients.",
++  });
++  if (missingAdminScope) {
++    return missingAdminScope;
++  }
++  const disabled = requireCommandFlagEnabled(params.commandParams.cfg, {
++    label: "/approve allowlist edits",
++    configKey: "config",
++    disabledVerb: "are",
++  });
++  if (disabled) {
++    return disabled;
++  }
++  const applyConfigEdit = plugin?.allowlist?.applyConfigEdit;
++  if (!applyConfigEdit) {
++    return {
++      shouldContinue: false,
++      reply: { text: `⚠️ ${params.channelId} does not support grouped allowlist approvals.` },
++    };
++  }
++
++  const snapshot = await readConfigFileSnapshot();
++  if (!snapshot.valid || !snapshot.parsed || typeof snapshot.parsed !== "object") {
++    return {
++      shouldContinue: false,
++      reply: { text: "⚠️ Config file is invalid; fix it before using /approve allowlist." },
++    };
++  }
++  const parsedConfig = structuredClone(snapshot.parsed as Record<string, unknown>);
++  const editResult = await applyConfigEdit({
++    cfg: params.commandParams.cfg,
++    parsedConfig,
++    accountId: params.accountId,
++    scope: "dm",
++    action: "add",
++    entry: parsed.entry,
++    accessGroup: parsed.group,
++  });
++  if (!editResult) {
++    return {
++      shouldContinue: false,
++      reply: { text: `⚠️ ${params.channelId} does not support DM allowlist approvals.` },
++    };
++  }
++  if (editResult.kind === "invalid-entry") {
++    return { shouldContinue: false, reply: { text: "⚠️ Invalid allowlist approval target." } };
++  }
++  const deniedText = resolveConfigWriteDeniedText({
++    cfg: params.commandParams.cfg,
++    channel: params.commandParams.command.channel,
++    channelId: params.channelId,
++    accountId: params.accountId ?? undefined,
++    gatewayClientScopes: params.commandParams.ctx.GatewayClientScopes,
++    target: editResult.writeTarget,
++  });
++  if (deniedText) {
++    return { shouldContinue: false, reply: { text: deniedText } };
++  }
++
++  if (editResult.changed) {
++    try {
++      await applyAllowlistConfigMutation({
++        cfg: params.commandParams.cfg,
++        accountId: params.accountId,
++        scope: "dm",
++        action: "add",
++        entry: parsed.entry,
++        accessGroup: parsed.group,
++        applyConfigEdit,
++      });
++    } catch (error) {
++      if (error instanceof AutoReplyConfigMutationError) {
++        return { shouldContinue: false, reply: { text: `⚠️ ${error.message}` } };
++      }
++      throw error;
++    }
++  }
++
++  if (!editResult.changed) {
++    return { shouldContinue: false, reply: { text: "✅ Already allowlisted." } };
++  }
++  return {
++    shouldContinue: false,
++    reply: {
++      text: `✅ DM allowlist approved (${parsed.group}): ${editResult.pathLabel}.`,
++    },
++  };
++}
++export const handleApproveCommand: CommandHandler = async (params, allowTextCommands) => {
++  if (!allowTextCommands) {
++    return null;
++  }
++  const normalized = params.command.commandBodyNormalized;
++  const parsed = parseApproveCommand(normalized);
++  if (!parsed) {
++    return null;
++  }
+   const effectiveAccountId = resolveChannelAccountId({
+     cfg: params.cfg,
+     ctx: params.ctx,
+     command: params.command,
+   });
+-  const approvalCapability = resolveChannelApprovalCapability(
+-    getChannelPlugin(params.command.channel),
+-  );
++  const commandChannelId = resolveCommandChannelId(params);
++  const channelPlugin = commandChannelId
++    ? getChannelPlugin(commandChannelId)
++    : getChannelPlugin(params.command.channel);
++
++  if (!parsed.ok) {
++    const accessGroups = channelPlugin?.allowlist?.accessGroups;
++    if (commandChannelId && accessGroups) {
++      const allowlistResult = await handleAllowlistApproveCommand({
++        commandParams: params,
++        channelId: commandChannelId,
++        accountId: effectiveAccountId,
++        accessGroups,
++      });
++      if (allowlistResult) {
++        return allowlistResult;
++      }
++    }
++    return { shouldContinue: false, reply: { text: parsed.error } };
++  }
++
++  const isPluginId = parsed.id.startsWith("plugin:");
++  const approvalCapability = resolveChannelApprovalCapability(channelPlugin);
+   const approveCommandBehavior = approvalCapability?.resolveApproveCommandBehavior?.({
+     cfg: params.cfg,
+     accountId: effectiveAccountId,
+diff --git a/src/auto-reply/reply/config-mutations.ts b/src/auto-reply/reply/config-mutations.ts
+index f354f8fc26..f9ea4d0a14 100644
+--- a/src/auto-reply/reply/config-mutations.ts
++++ b/src/auto-reply/reply/config-mutations.ts
+@@ -101,6 +101,7 @@ type ApplyAllowlistConfigEdit = (params: {
+   scope: "dm" | "group";
+   action: "add" | "remove";
+   entry: string;
++  accessGroup?: string;
+ }) => MaybePromise<AllowlistConfigEditResult>;
+ 
+ export async function applyAllowlistConfigMutation(params: {
+@@ -109,6 +110,7 @@ export async function applyAllowlistConfigMutation(params: {
+   scope: "dm" | "group";
+   action: "add" | "remove";
+   entry: string;
++  accessGroup?: string;
+   applyConfigEdit: ApplyAllowlistConfigEdit;
+ }): Promise<void> {
+   await transformConfigFileWithRetry({
+@@ -123,6 +125,7 @@ export async function applyAllowlistConfigMutation(params: {
+         scope: params.scope,
+         action: params.action,
+         entry: params.entry,
++        accessGroup: params.accessGroup,
+       });
+       if (!latestEditResult || latestEditResult.kind === "invalid-entry") {
+         throw new AutoReplyConfigMutationError("Invalid allowlist entry.");
+diff --git a/src/auto-reply/templating.ts b/src/auto-reply/templating.ts
+index 2cdba8b411..079f2f63a6 100644
+--- a/src/auto-reply/templating.ts
++++ b/src/auto-reply/templating.ts
+@@ -199,6 +199,7 @@ export type MsgContext = {
+   SenderUsername?: string;
+   SenderTag?: string;
+   SenderE164?: string;
++  SenderGroup?: string;
+   Timestamp?: number;
+   LocationLat?: number;
+   LocationLon?: number;
+diff --git a/src/channels/plugins/types.adapters.ts b/src/channels/plugins/types.adapters.ts
+index 021fc788b9..6489741c57 100644
+--- a/src/channels/plugins/types.adapters.ts
++++ b/src/channels/plugins/types.adapters.ts
+@@ -669,6 +669,10 @@ export type ChannelApprovalCapability = ChannelApprovalAdapter & {
+ };
+ 
+ export type ChannelAllowlistAdapter = {
++  accessGroups?: {
++    groups: readonly string[];
++    defaultGroup: string;
++  };
+   applyConfigEdit?: (params: {
+     cfg: OpenClawConfig;
+     parsedConfig: Record<string, unknown>;
+@@ -676,6 +680,7 @@ export type ChannelAllowlistAdapter = {
+     scope: "dm" | "group";
+     action: "add" | "remove";
+     entry: string;
++    accessGroup?: string;
+   }) =>
+     | {
+         kind: "ok";
+diff --git a/src/config/bundled-channel-config-metadata.generated.ts b/src/config/bundled-channel-config-metadata.generated.ts
+index 5cd74c26f4..2bbfd6182b 100644
+--- a/src/config/bundled-channel-config-metadata.generated.ts
++++ b/src/config/bundled-channel-config-metadata.generated.ts
+@@ -26,7 +26,8 @@ const RAW_BUNDLED_CHANNEL_CONFIG_METADATA = [
+   'keep approval prompts scoped to the agents you actually operate from Slack."},"execApprovals.sessionFilter":{"label":"Slack Exec Approval Session Filter","help":"Optional session-key filters matched as substring or regex-style patterns before Slack approval routing is used. Use narrow patterns so Slack approvals only appear for intended sessions."},"execApprovals.target":{"label":"Slack Exec Approval Target","help":"Controls where Slack approval prompts are sent: \\"dm\\" sends to approver DMs (default), \\"channel\\" sends to the originating Slack chat/thread, and \\"both\\" sends to both. Channel delivery exposes the command text to the chat, so only use it in trusted channels."},"streaming":{"label":"Slack Streaming Mode","help":"Unified Slack stream preview mode: \\"off\\" | \\"partial\\" | \\"block\\" | \\"progress\\". Legacy boolean/streamMode keys are auto-mapped."},"streaming.mode":{"label":"Slack Streaming Mode","help":"Canonical Slack preview mode: \\"off\\" | \\"partial\\" | \\"block\\" | \\"progress\\"."},"streaming.chunkMode":{"label":"Slack Chunk Mode","help":"Chunking mode for outbound Slack text delivery: \\"length\\" (default) or \\"newline\\"."},"streaming.block.enabled":{"label":"Slack Block Streaming Enabled","help":"Enable chunked block-style Slack preview delivery when channels.slack.streaming.mode=\\"block\\"."},"streaming.block.coalesce":{"label":"Slack Block Streaming Coalesce","help":"Merge streamed Slack block replies before final delivery."},"streaming.nativeTransport":{"label":"Slack Native Streaming","help":"Enable native Slack text streaming (chat.startStream/chat.appendStream/chat.stopStream) when channels.slack.streaming.mode is partial (default: true). Native streaming and Slack assistant thread status require a reply thread target; top-level DMs can still use draft post-and-edit preview streaming."},"streaming.preview.toolProgress":{"label":"Slack Draft Tool Progress","help":"Show tool/progress activity in the live draft preview message (default: true). Set false to hide interim tool updates while the draft preview stays active."},"streaming.preview.commandText":{"label":"Slack Draft Command Text","help":"Command/exec detail in preview tool-progress lines: \\"raw\\" preserves released behavior; \\"status\\" shows only the tool label."},"streaming.progress.label":{"label":"Slack Progress Label","help":"Initial progress draft title. Use \\"auto\\" for built-in single-word labels, a custom string, or false to hide the title."},"streaming.progress.labels":{"label":"Slack Progress Label Pool","help":"Candidate labels for streaming.progress.label=\\"auto\\". Leave unset to use OpenClaw built-in progress labels."},"streaming.progress.maxLines":{"label":"Slack Progress Max Lines","help":"Maximum number of compact progress lines to keep below the draft label (default: 8)."},"streaming.progress.maxLineChars":{"label":"Slack Progress Max Line Chars","help":"Maximum characters per compact progress line before truncation (default: 120). Prose cuts at word boundaries; commands and paths keep useful suffixes."},"streaming.progress.render":{"label":"Slack Progress Renderer","help":"Progress draft renderer: \\"text\\" uses one portable text body; \\"rich\\" renders structured Slack Block Kit fields with the same text fallback."},"streaming.progress.toolProgress":{"label":"Slack Progress Tool Lines","help":"Show compact tool/progress lines in progress draft mode (default: true). Set false to keep only the label until final delivery."},"streaming.progress.commandText":{"label":"Slack Progress Command Text","help":"Command/exec detail in progress draft lines: \\"raw\\" preserves released behavior; \\"status\\" shows only the tool label."},"thread.historyScope":{"label":"Slack Thread History Scope","help":"Scope for Slack thread history context (\\"thread\\" isolates per thread; \\"channel\\" reuses channel history)."},"thread.inheritParent":{"label":"Slack Thread Parent Inheritance","help":"If true, Slack thread sessions inherit the parent channel transcript (default: false)."},"thread.initialHistoryLimit":{"label":"Slack Thread Initial History Limit","help":"Maximum number of existing Slack thread messages to fetch when starting a new thread session (default: 20, set to 0 to disable)."},"thread.requireExplicitMention":{"label":"Slack Thread Require Explicit Mention","help":"If true, require an explicit @mention even inside threads where the bot has participated. Suppresses implicit thread mention behavior so the bot only responds to explicit @bot mentions in threads (default: false)."}}},{"pluginId":"synology-chat","channelId":"synology-chat","label":"Synology Chat","description":"Connect your Synology NAS Chat to OpenClaw with full agent capabilities.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"dangerouslyAllowNameMatching":{"type":"boolean"},"dangerouslyAllowInheritedWebhookPath":{"type":"boolean"}},"additionalProperties":{}}},{"pluginId":"telegram","channelId":"telegram","label":"Telegram","description":"simplest way to get started — register a bot with @BotFather and get going.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"capabilities":{"anyOf":[{"type":"array","items":{"type":"string"}},{"type":"object","properties":{"inlineButtons":{"type":"string","enum":["off","dm","group","all","allowlist"]}},"additionalProperties":false}]},"execApprovals":{"type":"object","properties":{"enabled":{"anyOf":[{"type":"boolean"},{"type":"string","const":"auto"}]},"approvers":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"agentFilter":{"type":"array","items":{"type":"string"}},"sessionFilter":{"type":"array","items":{"type":"string"}},"target":{"type":"string","enum":["dm","channel","both"]}},"additionalProperties":false},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"enabled":{"type":"boolean"},"commands":{"type":"object","properties":{"native":{"anyOf":[{"type":"boolean"},{"type":"string","const":"auto"}]},"nativeSkills":{"anyOf":[{"type":"boolean"},{"type":"string","const":"auto"}]}},"additionalProperties":false},"customCommands":{"type":"array","items":{"type":"object","properties":{"command":{"type":"string"},"description":{"type":"string"}},"required":["command","description"],"additionalProperties":false}},"configWrites":{"type":"boolean"},"dmPolicy":{"default":"pairing","type":"string","enum":["pairing","allowlist","open","disabled"]},"botToken":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"tokenFile":{"type":"string"},"replyToMode":{"anyOf":[{"type":"string","const":"off"},{"type":"string","const":"first"},{"type":"string","const":"all"},{"type":"string","const":"batched"}]},"dm":{"type":"object","properties":{"threadReplies":{"type":"string","enum":["off","inbound","always"]}},"additionalProperties":false},"groups":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"ingest":{"type":"boolean"},"disableAudioPreflight":{"type":"boolean"},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"topics":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"ingest":{"type":"boolean"},"disableAudioPreflight":{"type":"boolean"},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"agentId":{"type":"string"},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"defaultTo":{"anyOf":[{"type":"string"},{"type":"number"}]},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"contextVisibility":{"type":"string","enum":["all","allowlist","allowlist_quote"]},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dmHistoryLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dms":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"direct":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"threadReplies":{"type":"string","enum":["off","inbound","always"]},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"topics":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"ingest":{"type":"boolean"},"disableAudioPreflight":{"type":"boolean"},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"agentId":{"type":"string"},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"requireTopic":{"type":"boolean"},"autoTopicLabel":{"anyOf":[{"type":"boolean"},{"type":"object","properties":{"enabled":{"type":"boolean"},"prompt":{"type":"string"}},"additionalProperties":false}]}},"additionalProperties":false}},"textChunkLimit":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"streaming":{"type":"object","properties":{"mode":{"type":"string","enum":["off","partial","block","progress"]},"chunkMode":{"type":"string","enum":["length","newline"]},"preview":{"type":"object","properties":{"chunk":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"breakPreference":{"anyOf":[{"type":"string","const":"paragraph"},{"type":"string","const":"newline"},{"type":"string","const":"sentence"}]}},"additionalProperties":false},"toolProgress":{"type":"boolean"},"commandText":{"type":"string","enum":["raw","status"]},"nativeToolProgress":{"type":"boolean"},"nativeToolProgressAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}}},"additionalProperties":false},"progress":{"type":"object","properties":{"label":{"anyOf":[{"type":"string"},{"type":"boolean","const":false}]},"labels":{"type":"array","items":{"type":"string"}},"maxLines":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxLineChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"render":{"type":"string","enum":["text","rich"]},"toolProgress":{"type":"boolean"},"commandText":{"type":"string","enum":["raw","status"]}},"additionalProperties":false},"block":{"type":"object","properties":{"enabled":{"type":"boolean"},"coalesce":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"idleMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"additionalProperties":false}},"additionalProperties":false},"mediaMaxMb":{"type":"number","exclusiveMinimum":0},"timeoutSeconds":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"mediaGroupFlushMs":{"description":"Buffer window in milliseconds for Telegram media groups/albums before dispatching them as one inbound message. Default: 500.","type":"integer","minimum":10,"maximum":60000},"pollingStallThresholdMs":{"type":"integer","minimum":30000,"maximum":600000},"retry":{"type":"object","properties":{"attempts":{"type":"integer","minimum":1,"maximum":9007199254740991},"minDelayMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"maxDelayMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"jitter":{"type":"number","minimum":0,"maximum":1}},"additionalProperties":false},"network":{"type":"object","properties":{"autoSelectFamily":{"type":"boolean"},"dnsResultOrder":{"type":"string","enum":["ipv4first","verbatim"]},"dangerouslyAllowPrivateNetwork":{"description":"Dangerous opt-in for trusted Telegram fake-IP or transparent-proxy environments where api.telegram.org resolves to private/internal/special-use addresses during media downloads.","type":"boolean"}},"additionalProperties":false},"proxy":{"type":"string"},"webhookUrl":{"description":"Public HTTPS webhook URL registered with Telegram for inbound updates. This must be internet-reachable and requires channels.telegram.webhookSecret.","type":"string"},"webhookSecret":{"description":"Secret token sent to Telegram during webhook registration and verified on inbound webhook requests. Telegram returns this value for verification; this is not the gateway auth token and not the bot token.","anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"a',
+   'dditionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"webhookPath":{"description":"Local webhook route path served by the gateway listener. Defaults to /telegram-webhook.","type":"string"},"webhookHost":{"description":"Local bind host for the webhook listener. Defaults to 127.0.0.1; keep loopback unless you intentionally expose direct ingress.","type":"string"},"webhookPort":{"description":"Local bind port for the webhook listener. Defaults to 8787; set to 0 to let the OS assign an ephemeral port.","type":"integer","minimum":0,"maximum":9007199254740991},"webhookCertPath":{"description":"Path to the self-signed certificate (PEM) to upload to Telegram during webhook registration. Required for self-signed certs (direct IP or no domain).","type":"string"},"actions":{"type":"object","properties":{"reactions":{"type":"boolean"},"sendMessage":{"type":"boolean"},"poll":{"type":"boolean"},"deleteMessage":{"type":"boolean"},"editMessage":{"type":"boolean"},"sticker":{"type":"boolean"},"createForumTopic":{"type":"boolean"},"editForumTopic":{"type":"boolean"}},"additionalProperties":false},"threadBindings":{"type":"object","properties":{"enabled":{"type":"boolean"},"idleHours":{"type":"number","minimum":0},"maxAgeHours":{"type":"number","minimum":0},"spawnSessions":{"type":"boolean"},"defaultSpawnContext":{"type":"string","enum":["isolated","fork"]},"spawnSubagentSessions":{"type":"boolean"},"spawnAcpSessions":{"type":"boolean"}},"additionalProperties":false},"reactionNotifications":{"type":"string","enum":["off","own","all"]},"reactionLevel":{"type":"string","enum":["off","ack","minimal","extensive"]},"heartbeat":{"type":"object","properties":{"showOk":{"type":"boolean"},"showAlerts":{"type":"boolean"},"useIndicator":{"type":"boolean"}},"additionalProperties":false},"healthMonitor":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false},"linkPreview":{"type":"boolean"},"silentErrorReplies":{"type":"boolean"},"responsePrefix":{"type":"string"},"ackReaction":{"type":"string"},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"apiRoot":{"type":"string","format":"uri"},"trustedLocalFileRoots":{"description":"Trusted local filesystem roots for self-hosted Telegram Bot API absolute file_path values. Only absolute paths under these roots are read directly; all other absolute paths are rejected.","type":"array","items":{"type":"string"}},"autoTopicLabel":{"anyOf":[{"type":"boolean"},{"type":"object","properties":{"enabled":{"type":"boolean"},"prompt":{"type":"string"}},"additionalProperties":false}]},"accounts":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"name":{"type":"string"},"capabilities":{"anyOf":[{"type":"array","items":{"type":"string"}},{"type":"object","properties":{"inlineButtons":{"type":"string","enum":["off","dm","group","all","allowlist"]}},"additionalProperties":false}]},"execApprovals":{"type":"object","properties":{"enabled":{"anyOf":[{"type":"boolean"},{"type":"string","const":"auto"}]},"approvers":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"agentFilter":{"type":"array","items":{"type":"string"}},"sessionFilter":{"type":"array","items":{"type":"string"}},"target":{"type":"string","enum":["dm","channel","both"]}},"additionalProperties":false},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"enabled":{"type":"boolean"},"commands":{"type":"object","properties":{"native":{"anyOf":[{"type":"boolean"},{"type":"string","const":"auto"}]},"nativeSkills":{"anyOf":[{"type":"boolean"},{"type":"string","const":"auto"}]}},"additionalProperties":false},"customCommands":{"type":"array","items":{"type":"object","properties":{"command":{"type":"string"},"description":{"type":"string"}},"required":["command","description"],"additionalProperties":false}},"configWrites":{"type":"boolean"},"dmPolicy":{"default":"pairing","type":"string","enum":["pairing","allowlist","open","disabled"]},"botToken":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"tokenFile":{"type":"string"},"replyToMode":{"anyOf":[{"type":"string","const":"off"},{"type":"string","const":"first"},{"type":"string","const":"all"},{"type":"string","const":"batched"}]},"dm":{"type":"object","properties":{"threadReplies":{"type":"string","enum":["off","inbound","always"]}},"additionalProperties":false},"groups":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"ingest":{"type":"boolean"},"disableAudioPreflight":{"type":"boolean"},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"topics":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"ingest":{"type":"boolean"},"disableAudioPreflight":{"type":"boolean"},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"agentId":{"type":"string"},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"defaultTo":{"anyOf":[{"type":"string"},{"type":"number"}]},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"contextVisibility":{"type":"string","enum":["all","allowlist","allowlist_quote"]},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dmHistoryLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dms":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"direct":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"threadReplies":{"type":"string","enum":["off","inbound","always"]},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"topics":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"ingest":{"type":"boolean"},"disableAudioPreflight":{"type":"boolean"},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"skills":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"systemPrompt":{"type":"string"},"agentId":{"type":"string"},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"requireTopic":{"type":"boolean"},"autoTopicLabel":{"anyOf":[{"type":"boolean"},{"type":"object","properties":{"enabled":{"type":"boolean"},"prompt":{"type":"string"}},"additionalProperties":false}]}},"additionalProperties":false}},"textChunkLimit":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"streaming":{"type":"object","properties":{"mode":{"type":"string","enum":["off","partial","block","progress"]},"chunkMode":{"type":"string","enum":["length","newline"]},"preview":{"type":"object","properties":{"chunk":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"breakPreference":{"anyOf":[{"type":"string","const":"paragraph"},{"type":"string","const":"newline"},{"type":"string","const":"sentence"}]}},"additionalProperties":false},"toolProgress":{"type":"boolean"},"commandText":{"type":"string","enum":["raw","status"]},"nativeToolProgress":{"type":"boolean"},"nativeToolProgressAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}}},"additionalProperties":false},"progress":{"type":"object","properties":{"label":{"anyOf":[{"type":"string"},{"type":"boolean","const":false}]},"labels":{"type":"array","items":{"type":"string"}},"maxLines":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxLineChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"render":{"type":"string","enum":["text","rich"]},"toolProgress":{"type":"boolean"},"commandText":{"type":"string","enum":["raw","status"]}},"additionalProperties":false},"block":{"type":"object","properties":{"enabled":{"type":"boolean"},"coalesce":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"idleMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"additionalProperties":false}},"additionalProperties":false},"mediaMaxMb":{"type":"number","exclusiveMinimum":0},"timeoutSeconds":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"mediaGroupFlushMs":{"description":"Buffer window in milliseconds for Telegram media groups/albums before dispatching them as one inbound message. Default: 500.","type":"integer","minimum":10,"maximum":60000},"pollingStallThresholdMs":{"type":"integer","minimum":30000,"maximum":600000},"retry":{"type":"object","properties":{"attempts":{"type":"integer","minimum":1,"maximum":9007199254740991},"minDelayMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"maxDelayMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"jitter":{"type":"number","minimum":0,"maximum":1}},"additionalProperties":false},"network":{"type":"object","properties":{"autoSelectFamily":{"type":"boolean"},"dnsResultOrder":{"type":"string","enum":["ipv4first","verbatim"]},"dangerouslyAllowPrivateNetwork":{"description":"Dangerous opt-in for trusted Telegram fake-IP or transparent-proxy environments where api.telegram.org resolves to private/internal/special-use addresses during media downloads.","type":"boolean"}},"additionalProperties":false},"proxy":{"type":"string"},"webhookUrl":{"description":"Public HTTPS webhook URL registered with Telegram for inbound updates. This must be internet-reachable and requires channels.telegram.webhookSecret.","type":"string"},"webhookSecret":{"description":"Secret token sent to Telegram during webhook registration and verified on inbound webhook requests. Telegram returns this value for verification; this is not the gateway auth token and not the bot token.","anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"webhookPath":{"description":"Local webhook route path served by the gateway listener. Defaults to /telegram-webhook.","type":"string"},"webhookHost":{"description":"Local bind host for the webhook listener. Defaults to 127.0.0.1; keep loopback unless you intentionally expose direct ingress.","type":"string"},"webhookPort":{"description":"Local bind port for the webhook listener. Defaults to 8787; set to 0 to let the OS assign an ephemeral port.","type":"integer","minimum":0,"maximum":9007199254740991},"webhookCertPath":{"description":"Path to the self-signed certificate (PEM) to upload to Telegram during webhook registration. Required for self-signed certs (direct IP or no domain).","type":"string"},"actions":{"type":"object","properties":{"reactions":{"type":"boolean"},"sendMessage":{"type":"boolean"},"poll":{"type":"boolean"},"deleteMessage":{"type":"boolean"},"editMessage":{"type":"boolean"},"sticker":{"type":"boolean"},"createForumTopic":{"type":"boolean"},"editForumTopic":{"type":"boolean"}},"additionalProperties":false},"threadBindings":{"type":"object","properties":{"enabled":{"type":"boolean"},"idleHours":{"type":"number","minimum":0},"maxAgeHours":{"type":"number","minimum":0},"spawnSessions":{"type":"boolean"},"defaultSpawnContext":{"type":"string","enum":["isolated","fork"]},"spawnSubagentSessions":{"type":"boolean"},"spawnAcpSessions":{"type":"boolean"}},"additionalProperties":false},"reactionNotifications":{"type":"string","enum":["off","own","all"]},"reactionLevel":{"type":"string","enum":["off","ack","minimal","extensive"]},"heartbeat":{"type":"object","properties":{"showOk":{"type":"boolean"},"showAlerts":{"type":"boolean"},"useIndicator":{"type":"boolean"}},"additionalProperties":false},"healthMonitor":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false},"linkPreview":{"type":"boolean"},"silentErrorReplies":{"type":"boolean"},"responsePrefix":{"type":"string',
+   '"},"ackReaction":{"type":"string"},"errorPolicy":{"type":"string","enum":["always","once","silent"]},"errorCooldownMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"apiRoot":{"type":"string","format":"uri"},"trustedLocalFileRoots":{"description":"Trusted local filesystem roots for self-hosted Telegram Bot API absolute file_path values. Only absolute paths under these roots are read directly; all other absolute paths are rejected.","type":"array","items":{"type":"string"}},"autoTopicLabel":{"anyOf":[{"type":"boolean"},{"type":"object","properties":{"enabled":{"type":"boolean"},"prompt":{"type":"string"}},"additionalProperties":false}]}},"required":["dmPolicy","groupPolicy"],"additionalProperties":false}},"defaultAccount":{"type":"string"}},"required":["dmPolicy","groupPolicy"],"additionalProperties":false},"uiHints":{"":{"label":"Telegram","help":"Telegram channel provider configuration including auth tokens, retry behavior, and message rendering controls. Use this section to tune bot behavior for Telegram-specific API semantics."},"customCommands":{"label":"Telegram Custom Commands","help":"Additional Telegram bot menu commands (merged with native; conflicts ignored)."},"botToken":{"label":"Telegram Bot Token","help":"Telegram bot token used to authenticate Bot API requests for this account/provider config. Use secret/env substitution and rotate tokens if exposure is suspected."},"dmPolicy":{"label":"Telegram DM Policy","help":"Direct message access control (\\"pairing\\" recommended). \\"open\\" requires channels.telegram.allowFrom=[\\"*\\"]."},"dm.threadReplies":{"label":"Telegram DM Thread Replies","help":"Controls whether Telegram DMs with message_thread_id use flat sessions (\\"off\\", default) or thread-scoped sessions (\\"inbound\\" or \\"always\\"). Thread IDs are still preserved for replies when sessions stay flat."},"direct.*.threadReplies":{"label":"Telegram Per-DM Thread Replies","help":"Per-DM override for message_thread_id session threading. Use \\"inbound\\" only when a specific direct chat intentionally uses Telegram DM topics as separate sessions."},"configWrites":{"label":"Telegram Config Writes","help":"Allow Telegram to write config in response to channel events/commands (default: true)."},"commands.native":{"label":"Telegram Native Commands","help":"Override native commands for Telegram (bool or \\"auto\\")."},"commands.nativeSkills":{"label":"Telegram Native Skill Commands","help":"Override native skill commands for Telegram (bool or \\"auto\\")."},"streaming":{"label":"Telegram Streaming Mode","help":"Unified Telegram stream preview mode: \\"off\\" | \\"partial\\" | \\"block\\" | \\"progress\\" (default: \\"partial\\"). \\"progress\\" keeps a single editable progress draft until final delivery. Legacy boolean/streamMode keys are detected; run doctor --fix to migrate."},"streaming.mode":{"label":"Telegram Streaming Mode","help":"Canonical Telegram preview mode: \\"off\\" | \\"partial\\" | \\"block\\" | \\"progress\\" (default: \\"partial\\")."},"streaming.chunkMode":{"label":"Telegram Chunk Mode","help":"Chunking mode for outbound Telegram text delivery: \\"length\\" (default) or \\"newline\\"."},"streaming.block.enabled":{"label":"Telegram Block Streaming Enabled","help":"Enable chunked block-style Telegram preview delivery when channels.telegram.streaming.mode=\\"block\\"."},"streaming.block.coalesce":{"label":"Telegram Block Streaming Coalesce","help":"Merge streamed Telegram block replies before sending final delivery."},"streaming.preview.chunk.minChars":{"label":"Telegram Draft Chunk Min Chars","help":"Minimum chars before emitting a Telegram block preview chunk when channels.telegram.streaming.mode=\\"block\\"."},"streaming.preview.chunk.maxChars":{"label":"Telegram Draft Chunk Max Chars","help":"Target max size for a Telegram block preview chunk when channels.telegram.streaming.mode=\\"block\\"."},"streaming.preview.chunk.breakPreference":{"label":"Telegram Draft Chunk Break Preference","help":"Preferred breakpoints for Telegram draft chunks (paragraph | newline | sentence)."},"streaming.preview.toolProgress":{"label":"Telegram Draft Tool Progress","help":"Show tool/progress activity in the live draft preview message (default: true when preview streaming is active). Set false to keep tool updates out of the edited Telegram preview."},"streaming.preview.commandText":{"label":"Telegram Draft Command Text","help":"Command/exec detail in preview tool-progress lines: \\"raw\\" preserves released behavior; \\"status\\" shows only the tool label."},"streaming.progress.label":{"label":"Telegram Progress Label","help":"Initial progress draft title. Use \\"auto\\" for built-in single-word labels, a custom string, or false to hide the title."},"streaming.progress.labels":{"label":"Telegram Progress Label Pool","help":"Candidate labels for streaming.progress.label=\\"auto\\". Leave unset to use OpenClaw built-in progress labels."},"streaming.progress.maxLines":{"label":"Telegram Progress Max Lines","help":"Maximum number of compact progress lines to keep below the draft label (default: 8)."},"streaming.progress.maxLineChars":{"label":"Telegram Progress Max Line Chars","help":"Maximum characters per compact progress line before truncation (default: 120). Prose cuts at word boundaries; commands and paths keep useful suffixes."},"streaming.progress.toolProgress":{"label":"Telegram Progress Tool Lines","help":"Show compact tool/progress lines in progress draft mode (default: true). Set false to keep only the label until final delivery."},"streaming.progress.commandText":{"label":"Telegram Progress Command Text","help":"Command/exec detail in progress draft lines: \\"raw\\" preserves released behavior; \\"status\\" shows only the tool label."},"retry.attempts":{"label":"Telegram Retry Attempts","help":"Max retry attempts for outbound Telegram API calls (default: 3)."},"retry.minDelayMs":{"label":"Telegram Retry Min Delay (ms)","help":"Minimum retry delay in ms for Telegram outbound calls."},"retry.maxDelayMs":{"label":"Telegram Retry Max Delay (ms)","help":"Maximum retry delay cap in ms for Telegram outbound calls."},"retry.jitter":{"label":"Telegram Retry Jitter","help":"Jitter factor (0-1) applied to Telegram retry delays."},"network.autoSelectFamily":{"label":"Telegram autoSelectFamily","help":"Override Node autoSelectFamily for Telegram (true=enable, false=disable)."},"network.dangerouslyAllowPrivateNetwork":{"label":"Telegram Dangerously Allow Private Network","help":"Dangerous opt-in for trusted fake-IP or transparent-proxy environments where Telegram media downloads resolve api.telegram.org to private/internal/special-use addresses."},"timeoutSeconds":{"label":"Telegram API Timeout (seconds)","help":"Max seconds before Telegram API requests are aborted (default: 500 per grammY)."},"mediaGroupFlushMs":{"label":"Telegram Media Group Flush (ms)","help":"Milliseconds to buffer Telegram albums/media groups before dispatching them as one inbound message. Default: 500."},"pollingStallThresholdMs":{"label":"Telegram Polling Stall Threshold (ms)","help":"Milliseconds without completed Telegram getUpdates liveness before the polling watchdog restarts the polling runner. Default: 120000."},"silentErrorReplies":{"label":"Telegram Silent Error Replies","help":"When true, Telegram bot replies marked as errors are sent silently (no notification sound). Default: false."},"apiRoot":{"label":"Telegram API Root URL","help":"Custom Telegram Bot API root URL. Use the API root only (for example https://api.telegram.org), not a full /bot<TOKEN> endpoint. Use for self-hosted Bot API servers (https://github.com/tdlib/telegram-bot-api) or reverse proxies in regions where api.telegram.org is blocked."},"trustedLocalFileRoots":{"label":"Telegram Trusted Local File Roots","help":"Trusted local filesystem roots for self-hosted Telegram Bot API absolute file_path values. Only absolute paths inside these roots are read directly; all other absolute paths are rejected."},"autoTopicLabel":{"label":"Telegram Auto Topic Label","help":"Auto-rename DM forum topics on first message using LLM. Default: true. Set to false to disable, or use object form { enabled: true, prompt: \'...\' } for custom prompt."},"autoTopicLabel.enabled":{"label":"Telegram Auto Topic Label Enabled","help":"Whether auto topic labeling is enabled. Default: true."},"autoTopicLabel.prompt":{"label":"Telegram Auto Topic Label Prompt","help":"Custom prompt for LLM-based topic naming. The user message is appended after the prompt."},"capabilities.inlineButtons":{"label":"Telegram Inline Buttons","help":"Enable Telegram inline button components for supported command and interaction surfaces. Disable if your deployment needs plain-text-only compatibility behavior."},"execApprovals":{"label":"Telegram Exec Approvals","help":"Telegram-native exec approval routing and approver authorization. When unset, OpenClaw auto-enables DM-first native approvals if approvers can be resolved for the selected bot account."},"execApprovals.enabled":{"label":"Telegram Exec Approvals Enabled","help":"Controls Telegram native exec approvals for this account: unset or \\"auto\\" enables DM-first native approvals when approvers can be resolved, true forces native approvals on, and false disables them."},"execApprovals.approvers":{"label":"Telegram Exec Approval Approvers","help":"Telegram user IDs allowed to approve exec requests for this bot account. Use numeric Telegram user IDs. If you leave this unset, OpenClaw falls back to numeric owner IDs inferred from commands.ownerAllowFrom when possible."},"execApprovals.agentFilter":{"label":"Telegram Exec Approval Agent Filter","help":"Optional allowlist of agent IDs eligible for Telegram exec approvals, for example `[\\"main\\", \\"ops-agent\\"]`. Use this to keep approval prompts scoped to the agents you actually operate from Telegram."},"execApprovals.sessionFilter":{"label":"Telegram Exec Approval Session Filter","help":"Optional session-key filters matched as substring or regex-style patterns before Telegram approval routing is used. Use narrow patterns so Telegram approvals only appear for intended sessions."},"execApprovals.target":{"label":"Telegram Exec Approval Target","help":"Controls where Telegram approval prompts are sent: \\"dm\\" sends to approver DMs (default), \\"channel\\" sends to the originating Telegram chat/topic, and \\"both\\" sends to both. Channel delivery exposes the command text to the chat, so only use it in trusted groups/topics."},"threadBindings.enabled":{"label":"Telegram Thread Binding Enabled","help":"Enable Telegram conversation binding features (/focus, /unfocus, /agents, and /session idle|max-age). Overrides session.threadBindings.enabled when set."},"threadBindings.idleHours":{"label":"Telegram Thread Binding Idle Timeout (hours)","help":"Inactivity window in hours for Telegram bound sessions. Set 0 to disable idle auto-unfocus (default: 24). Overrides session.threadBindings.idleHours when set."},"threadBindings.maxAgeHours":{"label":"Telegram Thread Binding Max Age (hours)","help":"Optional hard max age in hours for Telegram bound sessions. Set 0 to disable hard cap (default: 0). Overrides session.threadBindings.maxAgeHours when set."},"threadBindings.spawnSessions":{"label":"Telegram Thread-Bound Session Spawn","help":"Allow sessions_spawn(thread=true) and ACP thread spawns to auto-bind Telegram current conversations when supported."},"threadBindings.defaultSpawnContext":{"label":"Telegram Thread Spawn Context","help":"Default native subagent context for thread-bound spawns. \\"fork\\" starts from the requester transcript; \\"isolated\\" starts clean. Default: \\"fork\\"."}}},{"pluginId":"tlon","channelId":"tlon","label":"Tlon","description":"decentralized messaging on Urbit; install the plugin to enable.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"ship":{"type":"string","minLength":1},"url":{"type":"string"},"code":{"type":"string"},"network":{"type":"object","properties":{"dangerouslyAllowPrivateNetwork":{"type":"boolean"}},"additionalProperties":false},"groupChannels":{"type":"array","items":{"type":"string","minLength":1}},"dmAllowlist":{"type":"array","items":{"type":"string","minLength":1}},"groupInviteAllowlist":{"type":"array","items":{"type":"string","minLength":1}},"autoDiscoverChannels":{"type":"boolean"},"showModelSignature":{"type":"boolean"},"responsePrefix":{"type":"string"},"autoAcceptDmInvites":{"type":"boolean"},"autoAcceptGroupInvites":{"type":"boolean"},"ownerShip":{"type":"string","minLength":1},"authorization":{"type":"object","properties":{"channelRules":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"mode":{"type":"string","enum":["restricted","open"]},"allowedShips":{"type":"array","items":{"type":"string","minLength":1}}},"additionalProperties":false}}},"additionalProperties":false},"defaultAuthorizedShips":{"type":"array","items":{"type":"string","minLength":1}},"accounts":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"ship":{"type":"string","minLength":1},"url":{"type":"string"},"code":{"type":"string"},"network":{"type":"object","properties":{"dangerouslyAllowPrivateNetwork":{"type":"boolean"}},"additionalProperties":false},"groupChannels":{"type":"array","items":{"type":"string","minLength":1}},"dmAllowlist":{"type":"array","items":{"type":"string","minLength":1}},"groupInviteAllowlist":{"type":"array","items":{"type":"string","minLength":1}},"autoDiscoverChannels":{"type":"boolean"},"showModelSignature":{"type":"boolean"},"responsePrefix":{"type":"string"},"autoAcceptDmInvites":{"type":"boolean"},"autoAcceptGroupInvites":{"type":"boolean"},"ownerShip":{"type":"string","minLength":1}},"additionalProperties":false}}},"additionalProperties":false}},{"pluginId":"twitch","channelId":"twitch","label":"Twitch","description":"Twitch chat integration","schema":{"$schema":"http://json-schema.org/draft-07/schema#","anyOf":[{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"defaultAccount":{"type":"string"},"username":{"type":"string"},"accessToken":{"type":"string"},"clientId":{"type":"string"},"channel":{"type":"string","minLength":1},"allowFrom":{"type":"array","items":{"type":"string"}},"allowedRoles":{"type":"array","items":{"type":"string","enum":["moderator","owner","vip","subscriber","all"]}},"requireMention":{"type":"boolean"},"responsePrefix":{"type":"string"},"clientSecret":{"type":"string"},"refreshToken":{"type":"string"},"expiresIn":{"anyOf":[{"type":"number"},{"type":"null"}]},"obtainmentTimestamp":{"type":"number"}},"required":["username","accessToken","channel"],"additionalProperties":false},{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"defaultAccount":{"type":"string"},"accounts":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"username":{"type":"string"},"accessToken":{"type":"string"},"clientId":{"type":"string"},"channel":{"type":"string","minLength":1},"enabled":{"type":"boolean"},"allowFrom":{"type":"array","items":{"type":"string"}},"allowedRoles":{"type":"array","items":{"type":"string","enum":["moderator","owner","vip","subscriber","all"]}},"requireMention":{"type":"boolean"},"responsePrefix":{"type":"string"},"clientSecret":{"type":"string"},"refreshToken":{"type":"string"},"expiresIn":{"anyOf":[{"type":"number"},{"type":"null"}]},"obtainmentTimestamp":{"type":"number"}},"required":["username","accessToken","channel"],"additionalProperties":false}}},"required":["accounts"],"additionalProperties":false}]}},{"pluginId":"whatsapp","channelId":"whatsapp","label":"WhatsApp","description":"works with your own number; recommend a separate phone + eSIM.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"enabled":{"type":"boolean"},"capabilities":{"type":"array","items":{',
+-  '"type":"string"}},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"configWrites":{"type":"boolean"},"sendReadReceipts":{"type":"boolean"},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"},"dmPolicy":{"default":"pairing","type":"string","enum":["pairing","allowlist","open","disabled"]},"selfChatMode":{"type":"boolean"},"allowFrom":{"type":"array","items":{"type":"string"}},"defaultTo":{"type":"string"},"groupAllowFrom":{"type":"array","items":{"type":"string"}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"contextVisibility":{"type":"string","enum":["all","allowlist","allowlist_quote"]},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dmHistoryLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dms":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"textChunkLimit":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"chunkMode":{"type":"string","enum":["length","newline"]},"blockStreaming":{"type":"boolean"},"blockStreamingCoalesce":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"idleMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false},"groups":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"systemPrompt":{"type":"string"}},"additionalProperties":false}},"direct":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"systemPrompt":{"type":"string"}},"additionalProperties":false}},"ackReaction":{"type":"object","properties":{"emoji":{"type":"string"},"direct":{"default":true,"type":"boolean"},"group":{"default":"mentions","type":"string","enum":["always","mentions","never"]}},"required":["direct","group"],"additionalProperties":false},"reactionLevel":{"type":"string","enum":["off","ack","minimal","extensive"]},"debounceMs":{"default":0,"type":"integer","minimum":0,"maximum":9007199254740991},"replyToMode":{"anyOf":[{"type":"string","const":"off"},{"type":"string","const":"first"},{"type":"string","const":"all"},{"type":"string","const":"batched"}]},"heartbeat":{"type":"object","properties":{"showOk":{"type":"boolean"},"showAlerts":{"type":"boolean"},"useIndicator":{"type":"boolean"}},"additionalProperties":false},"healthMonitor":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false},"accounts":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"},"capabilities":{"type":"array","items":{"type":"string"}},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"configWrites":{"type":"boolean"},"sendReadReceipts":{"type":"boolean"},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"selfChatMode":{"type":"boolean"},"allowFrom":{"type":"array","items":{"type":"string"}},"defaultTo":{"type":"string"},"groupAllowFrom":{"type":"array","items":{"type":"string"}},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"contextVisibility":{"type":"string","enum":["all","allowlist","allowlist_quote"]},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dmHistoryLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dms":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"textChunkLimit":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"chunkMode":{"type":"string","enum":["length","newline"]},"blockStreaming":{"type":"boolean"},"blockStreamingCoalesce":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"idleMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false},"groups":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"systemPrompt":{"type":"string"}},"additionalProperties":false}},"direct":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"systemPrompt":{"type":"string"}},"additionalProperties":false}},"ackReaction":{"type":"object","properties":{"emoji":{"type":"string"},"direct":{"default":true,"type":"boolean"},"group":{"default":"mentions","type":"string","enum":["always","mentions","never"]}},"required":["direct","group"],"additionalProperties":false},"reactionLevel":{"type":"string","enum":["off","ack","minimal","extensive"]},"debounceMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"replyToMode":{"anyOf":[{"type":"string","const":"off"},{"type":"string","const":"first"},{"type":"string","const":"all"},{"type":"string","const":"batched"}]},"heartbeat":{"type":"object","properties":{"showOk":{"type":"boolean"},"showAlerts":{"type":"boolean"},"useIndicator":{"type":"boolean"}},"additionalProperties":false},"healthMonitor":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false},"name":{"type":"string"},"authDir":{"type":"string"},"mediaMaxMb":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"defaultAccount":{"type":"string"},"mediaMaxMb":{"default":50,"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"actions":{"type":"object","properties":{"reactions":{"type":"boolean"},"sendMessage":{"type":"boolean"},"polls":{"type":"boolean"}},"additionalProperties":false}},"required":["dmPolicy","groupPolicy","debounceMs","mediaMaxMb"],"additionalProperties":false},"uiHints":{"":{"label":"WhatsApp","help":"WhatsApp channel provider configuration for access policy and message batching behavior. Use this section to tune responsiveness and direct-message routing safety for WhatsApp chats."},"dmPolicy":{"label":"WhatsApp DM Policy","help":"Direct message access control (\\"pairing\\" recommended). \\"open\\" requires channels.whatsapp.allowFrom=[\\"*\\"]."},"selfChatMode":{"label":"WhatsApp Self-Phone Mode","help":"Same-phone setup (bot uses your personal WhatsApp number)."},"debounceMs":{"label":"WhatsApp Message Debounce (ms)","help":"Debounce window (ms) for batching rapid consecutive messages from the same sender (0 to disable)."},"configWrites":{"label":"WhatsApp Config Writes","help":"Allow WhatsApp to write config in response to channel events/commands (default: true)."}},"unsupportedSecretRefSurfacePatterns":["channels.whatsapp.accounts.*.creds.json","channels.whatsapp.creds.json"]},{"pluginId":"zalo","channelId":"zalo","label":"Zalo","description":"Vietnam-focused messaging platform with Bot API.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"botToken":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"tokenFile":{"type":"string"},"webhookUrl":{"type":"string"},"webhookSecret":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"webhookPath":{"type":"string"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"mediaMaxMb":{"type":"number"},"proxy":{"type":"string"},"responsePrefix":{"type":"string"},"accounts":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"botToken":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"tokenFile":{"type":"string"},"webhookUrl":{"type":"string"},"webhookSecret":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"webhookPath":{"type":"string"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"mediaMaxMb":{"type":"number"},"proxy":{"type":"string"},"responsePrefix":{"type":"string"}},"additionalProperties":false}},"defaultAccount":{"type":"string"}},"additionalProperties":false}},{"pluginId":"zalouser","channelId":"zalouser","label":"Zalo Personal","description":"Zalo personal account via QR code login.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"profile":{"type":"string"},"dangerouslyAllowNameMatching":{"type":"boolean"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"groups":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"},"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"additionalProperties":false}},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"},"accounts":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"profile":{"type":"string"},"dangerouslyAllowNameMatching":{"type":"boolean"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"groups":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"},"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"additionalProperties":false}},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"}},"required":["groupPolicy"],"additionalProperties":false}},"defaultAccount":{"type":"string"}},"required":["groupPolicy"],"additionalProperties":false}}]',
++  '"type":"string"}},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"configWrites":{"type":"boolean"},"sendReadReceipts":{"type":"boolean"},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"},"dmPolicy":{"default":"pairing","type":"string","enum":["pairing","allowlist","open","disabled"]},"selfChatMode":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"object","properties":{"number":{"type":"string"},"group":{"type":"string","enum":["trusted","partner","friends","family","work","restricted"]}},"required":["number","group"],"additionalProperties":false}]}},"defaultTo":{"type":"string"},"groupAllowFrom":{"type":"array","items":{"type":"string"}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"contextVisibility":{"type":"string","enum":["all","allowlist","allowlist_quote"]},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dmHistoryLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dms":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"textChunkLimit":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"chunkMode":{"type":"string","enum":["length","newline"]},"blockStreaming":{"type":"boolean"},"blockStreamingCoalesce":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"idleMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false},"groups":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"systemPrompt":{"type":"string"}},"additionalProperties":false}},"direct":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"systemPrompt":{"type":"string"}},"additionalProperties":false}},"ackReaction":{"type":"object","properties":{"emoji":{"type":"string"},"direct":{"default":true,"type":"boolean"},"group":{"default":"mentions","type":"string","enum":["always","mentions","never"]}},"required":["direct","group"],"additionalProperties":false},"reactionLevel":{"type":"string","enum":["off","ack","minimal","extensive"]},"debounceMs":{"default":0,"type":"integer","minimum":0,"maximum":9007199254740991},"replyToMode":{"anyOf":[{"type":"string","const":"off"},{"type":"string","const":"first"},{"type":"string","const":"all"},{"type":"string","const":"batched"}]},"heartbeat":{"type":"object","properties":{"showOk":{"type":"boolean"},"showAlerts":{"type":"boolean"},"useIndicator":{"type":"boolean"}},"additionalProperties":false},"healthMonitor":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false},"accounts":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"},"capabilities":{"type":"array","items":{"type":"string"}},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"configWrites":{"type":"boolean"},"sendReadReceipts":{"type":"boolean"},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"selfChatMode":{"type":"boolean"},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"object","properties":{"number":{"type":"string"},"group":{"type":"string","enum":["trusted","partner","friends","family","work","restricted"]}},"required":["number","group"],"additionalProperties":false}]}},"defaultTo":{"type":"string"},"groupAllowFrom":{"type":"array","items":{"type":"string"}},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"contextVisibility":{"type":"string","enum":["all","allowlist","allowlist_quote"]},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dmHistoryLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"dms":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"textChunkLimit":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"chunkMode":{"type":"string","enum":["length","newline"]},"blockStreaming":{"type":"boolean"},"blockStreamingCoalesce":{"type":"object","properties":{"minChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"maxChars":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"idleMs":{"type":"integer","minimum":0,"maximum":9007199254740991}},"additionalProperties":false},"groups":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"toolsBySender":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"systemPrompt":{"type":"string"}},"additionalProperties":false}},"direct":{"type":"object","propertyNames":{"type":"string"},"additionalProperties":{"type":"object","properties":{"systemPrompt":{"type":"string"}},"additionalProperties":false}},"ackReaction":{"type":"object","properties":{"emoji":{"type":"string"},"direct":{"default":true,"type":"boolean"},"group":{"default":"mentions","type":"string","enum":["always","mentions","never"]}},"required":["direct","group"],"additionalProperties":false},"reactionLevel":{"type":"string","enum":["off","ack","minimal","extensive"]},"debounceMs":{"type":"integer","minimum":0,"maximum":9007199254740991},"replyToMode":{"anyOf":[{"type":"string","const":"off"},{"type":"string","const":"first"},{"type":"string","const":"all"},{"type":"string","const":"batched"}]},"heartbeat":{"type":"object","properties":{"showOk":{"type":"boolean"},"showAlerts":{"type":"boolean"},"useIndicator":{"type":"boolean"}},"additionalProperties":false},"healthMonitor":{"type":"object","properties":{"enabled":{"type":"boolean"}},"additionalProperties":false},"name":{"type":"string"},"authDir":{"type":"string"},"mediaMaxMb":{"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991}},"additionalProperties":false}},"defaultAccount":{"type":"string"},"mediaMaxMb":{"default":50,"type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"actions":{"type":"object","properties":{"reactions":{"type":"boolean"},"sendMessage":{"type":"boolean"},"polls":{"type":"boolean"}},"additionalProperties":false}},"required":["dmPolicy","groupPolicy","debounceMs","mediaMaxMb"],"additionalProperties":false},"uiHints":{"":{"label":"WhatsApp","help":"WhatsApp channel provider configuration for access policy and message batching behavior. Use this section to tune responsiveness and direct-message routing safety for WhatsApp chats."},"dmPolicy":{"label":"WhatsApp DM Policy","help":"Direct message access control (\\"pairing\\" recommended). \\"open\\" requires channels.whatsapp.allowFrom=[\\"*\\"]."},"selfChatMode":{"label":"WhatsApp Self-Phone Mode","help":"Same-phone setup (bot uses your personal WhatsApp number)."},"debounceMs":{"label":"WhatsApp Message Debounce (ms)","help":"Debounce window (ms) for batching rapid consecutive messages from the same sender (0 to disable)."},"configWrites":{"label":"WhatsApp Config Writes","help":"Allow WhatsApp to write config in response to channel events/commands (default: true)."}},"unsupportedSecretRefSurfacePatterns":["channels.whatsapp.accounts.*.creds.json","channels.whatsapp.creds.json"]},{"pluginId":"zalo","channelId":"zalo","label":"Zalo","description":"Vietnam-focused messaging platform with Bot API.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"botToken":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"tokenFile":{"type":"string"},"webhookUrl":{"type":"string"},"webhookSecret":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"webhookPath":{"type":"string"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"mediaMaxMb":{"type":"number"},"proxy":{"type":"string"},"responsePrefix":{"type":"string"},"accounts":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"botToken":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"tokenFile":{"type":"string"},"webhookUrl":{"type":"string"},"webhookSecret":{"anyOf":[{"type":"string"},{"oneOf":[{"type":"object","properties":{"source":{"type":"string","const":"env"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{0,127}$"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"file"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false},{"type":"object","properties":{"source":{"type":"string","const":"exec"},"provider":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"id":{"type":"string"}},"required":["source","provider","id"],"additionalProperties":false}]}]},"webhookPath":{"type":"string"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"type":"string","enum":["open","disabled","allowlist"]},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"mediaMaxMb":{"type":"number"},"proxy":{"type":"string"},"responsePrefix":{"type":"string"}},"additionalProperties":false}},"defaultAccount":{"type":"string"}},"additionalProperties":false}},{"pluginId":"zalouser","channelId":"zalouser","label":"Zalo Personal","description":"Zalo personal account via QR code login.","schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"profile":{"type":"string"},"dangerouslyAllowNameMatching":{"type":"boolean"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"groups":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"},"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"additionalProperties":false}},"messagePrefix":{"type":"string"},"responsePrefix":{"type":"string"},"accounts":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"},"markdown":{"type":"object","properties":{"tables":{"type":"string","enum":["off","bullets","code","block"]}},"additionalProperties":false},"profile":{"type":"string"},"dangerouslyAllowNameMatching":{"type":"boolean"},"dmPolicy":{"type":"string","enum":["pairing","allowlist","open","disabled"]},"allowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"historyLimit":{"type":"integer","minimum":0,"maximum":9007199254740991},"groupAllowFrom":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"number"}]}},"groupPolicy":{"default":"allowlist","type":"string","enum":["open","disabled","allowlist"]},"groups":{"type":"object","properties":{},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"},"requireMention":{"type":"boolean"},"tools":{"type":"object","properties":{"allow":{"type":"array","items":{"type":"string"}},"alsoAllow":{"type":"array","items":{"type":"string"}},"deny":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}},"additionalProperties":false}},"me',
++  'ssagePrefix":{"type":"string"},"responsePrefix":{"type":"string"}},"required":["groupPolicy"],"additionalProperties":false}},"defaultAccount":{"type":"string"}},"required":["groupPolicy"],"additionalProperties":false}}]',
+ ].join("");
+ 
+ export const GENERATED_BUNDLED_CHANNEL_CONFIG_METADATA = JSON.parse(
+diff --git a/src/config/types.whatsapp.ts b/src/config/types.whatsapp.ts
+index 8c93b6e6e0..1de9549b1e 100644
+--- a/src/config/types.whatsapp.ts
++++ b/src/config/types.whatsapp.ts
+@@ -14,6 +14,21 @@ import type {
+ import type { DmConfig } from "./types.messages.js";
+ import type { GroupToolPolicyBySenderConfig, GroupToolPolicyConfig } from "./types.tools.js";
+ 
++export type WhatsAppAllowFromGroup =
++  | "trusted"
++  | "partner"
++  | "friends"
++  | "family"
++  | "work"
++  | "restricted";
++
++export type WhatsAppGroupedAllowFromEntry = {
++  number: string;
++  group: WhatsAppAllowFromGroup;
++};
++
++export type WhatsAppAllowFromEntry = string | WhatsAppGroupedAllowFromEntry;
++
+ export type WhatsAppActionConfig = {
+   reactions?: boolean;
+   sendMessage?: boolean;
+@@ -57,8 +72,8 @@ type WhatsAppSharedConfig = {
+   dmPolicy?: DmPolicy;
+   /** Same-phone setup (bot uses your personal WhatsApp number). */
+   selfChatMode?: boolean;
+-  /** Optional allowlist for WhatsApp direct chats (E.164). */
+-  allowFrom?: string[];
++  /** Optional allowlist for WhatsApp direct chats (E.164), optionally tagged with an access group. */
++  allowFrom?: WhatsAppAllowFromEntry[];
+   /** Default delivery target for CLI `--deliver` when no explicit `--reply-to` is provided (E.164 or group JID). */
+   defaultTo?: string;
+   /** Optional allowlist for WhatsApp group senders (E.164). */
+diff --git a/src/config/zod-schema.providers-whatsapp.ts b/src/config/zod-schema.providers-whatsapp.ts
+index 08d9c5aa77..1c7206789b 100644
+--- a/src/config/zod-schema.providers-whatsapp.ts
++++ b/src/config/zod-schema.providers-whatsapp.ts
+@@ -37,6 +37,24 @@ const WhatsAppDirectEntrySchema = z
+   .strict()
+   .optional();
+ 
++const WhatsAppAllowFromGroupSchema = z.enum([
++  "trusted",
++  "partner",
++  "friends",
++  "family",
++  "work",
++  "restricted",
++]);
++
++const WhatsAppGroupedAllowFromEntrySchema = z
++  .object({
++    number: z.string(),
++    group: WhatsAppAllowFromGroupSchema,
++  })
++  .strict();
++
++const WhatsAppAllowFromEntrySchema = z.union([z.string(), WhatsAppGroupedAllowFromEntrySchema]);
++
+ const WhatsAppDirectSchema = z.record(z.string(), WhatsAppDirectEntrySchema).optional();
+ 
+ const WhatsAppAckReactionSchema = z
+@@ -73,7 +91,7 @@ function buildWhatsAppCommonShape(params: { useDefaults: boolean }) {
+       ? DmPolicySchema.optional().default("pairing")
+       : DmPolicySchema.optional(),
+     selfChatMode: z.boolean().optional(),
+-    allowFrom: z.array(z.string()).optional(),
++    allowFrom: z.array(WhatsAppAllowFromEntrySchema).optional(),
+     defaultTo: z.string().optional(),
+     groupAllowFrom: z.array(z.string()).optional(),
+     groupPolicy: params.useDefaults
+@@ -100,6 +118,26 @@ function buildWhatsAppCommonShape(params: { useDefaults: boolean }) {
+   };
+ }
+ 
++function readWhatsAppAllowFromPolicyEntry(entry: unknown): string | undefined {
++  if (typeof entry === "string" || typeof entry === "number") {
++    const value = String(entry).trim();
++    return value || undefined;
++  }
++  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
++    return undefined;
++  }
++  const number = (entry as Record<string, unknown>).number;
++  return typeof number === "string" && number.trim() ? number.trim() : undefined;
++}
++
++function normalizeWhatsAppAllowFromPolicyEntries(allowFrom: unknown): string[] {
++  if (!Array.isArray(allowFrom)) {
++    return [];
++  }
++  return normalizeStringEntries(
++    allowFrom.flatMap((entry) => readWhatsAppAllowFromPolicyEntry(entry) ?? []),
++  );
++}
+ function enforceOpenDmPolicyAllowFromStar(params: {
+   dmPolicy: unknown;
+   allowFrom: unknown;
+@@ -110,7 +148,7 @@ function enforceOpenDmPolicyAllowFromStar(params: {
+   if (params.dmPolicy !== "open") {
+     return;
+   }
+-  const allow = normalizeStringEntries(Array.isArray(params.allowFrom) ? params.allowFrom : []);
++  const allow = normalizeWhatsAppAllowFromPolicyEntries(params.allowFrom);
+   if (allow.includes("*")) {
+     return;
+   }
+@@ -131,7 +169,7 @@ function enforceAllowlistDmPolicyAllowFrom(params: {
+   if (params.dmPolicy !== "allowlist") {
+     return;
+   }
+-  const allow = normalizeStringEntries(Array.isArray(params.allowFrom) ? params.allowFrom : []);
++  const allow = normalizeWhatsAppAllowFromPolicyEntries(params.allowFrom);
+   if (allow.length > 0) {
+     return;
+   }
+diff --git a/src/hooks/message-hook-mappers.test.ts b/src/hooks/message-hook-mappers.test.ts
+index dc18046b72..480a0978ea 100644
+--- a/src/hooks/message-hook-mappers.test.ts
++++ b/src/hooks/message-hook-mappers.test.ts
+@@ -200,7 +200,9 @@ describe("message hook mappers", () => {
+       parentSpanId: "3333333333333333",
+     };
+     const canonical = {
+-      ...deriveInboundMessageHookContext(makeInboundCtx({ TopicName: "Deployments" })),
++      ...deriveInboundMessageHookContext(
++        makeInboundCtx({ TopicName: "Deployments", SenderGroup: "friends" }),
++      ),
+       runId: "run-1",
+       trace,
+       callDepth: 2,
+@@ -217,6 +219,7 @@ describe("message hook mappers", () => {
+       runId: "run-1",
+       messageId: "msg-1",
+       senderId: "sender-1",
++      senderGroup: "friends",
+       trace,
+       traceId: "11111111111111111111111111111111",
+       spanId: "2222222222222222",
+@@ -236,6 +239,7 @@ describe("message hook mappers", () => {
+       threadId: 42,
+       messageId: "msg-1",
+       senderId: "sender-1",
++      senderGroup: "friends",
+       sessionKey: "session-1",
+       runId: "run-1",
+       trace: receivedEvent.trace,
+@@ -245,6 +249,7 @@ describe("message hook mappers", () => {
+     });
+     expect(receivedMetadata?.messageId).toBe("msg-1");
+     expect(receivedMetadata?.senderName).toBe("User One");
++    expect(receivedMetadata?.senderGroup).toBe("friends");
+     expect(receivedMetadata?.threadId).toBe(42);
+     expect(receivedMetadata?.topicName).toBe("Deployments");
+     const internalReceived = toInternalMessageReceivedContext(canonical);
+@@ -260,6 +265,7 @@ describe("message hook mappers", () => {
+     });
+     expect(internalMetadata?.senderUsername).toBe("userone");
+     expect(internalMetadata?.senderE164).toBe("+15551234567");
++    expect(internalMetadata?.senderGroup).toBe("friends");
+     expect(internalMetadata?.topicName).toBe("Deployments");
+   });
+ 
+@@ -343,6 +349,7 @@ describe("message hook mappers", () => {
+       sessionKey: "session-1",
+       parentConversationId: undefined,
+       senderId: "sender-1",
++      senderGroup: undefined,
+       messageId: "msg-1",
+       runId: undefined,
+       trace: undefined,
+@@ -374,6 +381,7 @@ describe("message hook mappers", () => {
+       sessionKey: "session-1",
+       parentConversationId: undefined,
+       senderId: "sender-1",
++      senderGroup: undefined,
+       messageId: "msg-1",
+       runId: undefined,
+       trace: undefined,
+diff --git a/src/hooks/message-hook-mappers.ts b/src/hooks/message-hook-mappers.ts
+index f50a922c4a..aa883b6c29 100644
+--- a/src/hooks/message-hook-mappers.ts
++++ b/src/hooks/message-hook-mappers.ts
+@@ -43,6 +43,7 @@ export type CanonicalInboundMessageHookContext = {
+   senderName?: string;
+   senderUsername?: string;
+   senderE164?: string;
++  senderGroup?: string;
+   provider?: string;
+   surface?: string;
+   threadId?: string | number;
+@@ -144,6 +145,7 @@ export function deriveInboundMessageHookContext(
+     senderName: ctx.SenderName,
+     senderUsername: ctx.SenderUsername,
+     senderE164: ctx.SenderE164,
++    senderGroup: ctx.SenderGroup,
+     provider: ctx.Provider,
+     surface: ctx.Surface,
+     threadId: ctx.MessageThreadId,
+@@ -240,6 +242,9 @@ export function toPluginMessageContext(
+   if ("senderId" in canonical && canonical.senderId) {
+     context.senderId = canonical.senderId;
+   }
++  if ("senderGroup" in canonical && canonical.senderGroup) {
++    context.senderGroup = canonical.senderGroup;
++  }
+   assignTraceFields(context, canonical.trace);
+   if (canonical.callDepth != null) {
+     context.callDepth = canonical.callDepth;
+@@ -299,6 +304,7 @@ export function toPluginInboundClaimContext(
+     sessionKey: canonical.sessionKey,
+     parentConversationId: conversation.parentConversationId,
+     senderId: canonical.senderId,
++    senderGroup: canonical.senderGroup,
+     messageId: canonical.messageId,
+     runId: canonical.runId,
+     callDepth: canonical.callDepth,
+@@ -328,6 +334,7 @@ export function toPluginInboundClaimEvent(
+     senderId: canonical.senderId,
+     senderName: canonical.senderName,
+     senderUsername: canonical.senderUsername,
++    senderGroup: canonical.senderGroup,
+     threadId: canonical.threadId,
+     messageId: canonical.messageId,
+     sessionKey: canonical.sessionKey,
+@@ -343,6 +350,7 @@ export function toPluginInboundClaimEvent(
+       originatingChannel: canonical.originatingChannel,
+       originatingTo: canonical.originatingTo,
+       senderE164: canonical.senderE164,
++      senderGroup: canonical.senderGroup,
+       mediaPath: canonical.mediaPath,
+       mediaUrl: canonical.mediaUrl,
+       mediaType: canonical.mediaType,
+@@ -369,6 +377,7 @@ export function toPluginMessageReceivedEvent(
+     threadId: canonical.threadId,
+     messageId: canonical.messageId,
+     senderId: canonical.senderId,
++    senderGroup: canonical.senderGroup,
+     sessionKey: canonical.sessionKey,
+     runId: canonical.runId,
+     metadata: {
+@@ -383,6 +392,7 @@ export function toPluginMessageReceivedEvent(
+       senderName: canonical.senderName,
+       senderUsername: canonical.senderUsername,
+       senderE164: canonical.senderE164,
++      senderGroup: canonical.senderGroup,
+       guildId: canonical.guildId,
+       channelName: canonical.channelName,
+       topicName: canonical.topicName,
+@@ -413,6 +423,7 @@ export function toPluginMessagePreAuthEvent(
+       originatingChannel: canonical.originatingChannel,
+       originatingTo: canonical.originatingTo,
+       senderE164: canonical.senderE164,
++      senderGroup: canonical.senderGroup,
+       groupId: canonical.groupId,
+       topicName: canonical.topicName,
+     },
+@@ -455,6 +466,7 @@ export function toInternalMessageReceivedContext(
+       senderName: canonical.senderName,
+       senderUsername: canonical.senderUsername,
+       senderE164: canonical.senderE164,
++      senderGroup: canonical.senderGroup,
+       guildId: canonical.guildId,
+       channelName: canonical.channelName,
+       topicName: canonical.topicName,
+@@ -481,6 +493,7 @@ export function toInternalMessagePreAuthContext(
+       provider: canonical.provider,
+       surface: canonical.surface,
+       senderE164: canonical.senderE164,
++      senderGroup: canonical.senderGroup,
+       groupId: canonical.groupId,
+       topicName: canonical.topicName,
+     },
+@@ -526,6 +539,7 @@ function toInternalInboundMessageHookContextBase(canonical: CanonicalInboundMess
+     senderId: canonical.senderId,
+     senderName: canonical.senderName,
+     senderUsername: canonical.senderUsername,
++    senderGroup: canonical.senderGroup,
+     provider: canonical.provider,
+     surface: canonical.surface,
+     mediaPath: canonical.mediaPath,
+diff --git a/src/infra/heartbeat-runner.returns-default-unset.test.ts b/src/infra/heartbeat-runner.returns-default-unset.test.ts
+index aaa4745188..03f4ae7653 100644
+--- a/src/infra/heartbeat-runner.returns-default-unset.test.ts
++++ b/src/infra/heartbeat-runner.returns-default-unset.test.ts
+@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
+ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
++import { normalizeWhatsAppAllowFromEntryNumbers } from "../../extensions/whatsapp/src/allow-from-groups.js";
+ import { HEARTBEAT_PROMPT } from "../auto-reply/heartbeat.js";
+ import type { ChannelOutboundAdapter } from "../channels/plugins/types.public.js";
+ import type { OpenClawConfig } from "../config/config.js";
+@@ -245,7 +246,8 @@ beforeAll(async () => {
+   });
+   whatsappPlugin.config = {
+     ...whatsappPlugin.config,
+-    resolveAllowFrom: ({ cfg }) => cfg.channels?.whatsapp?.allowFrom?.map((entry) => entry) ?? [],
++    resolveAllowFrom: ({ cfg }) =>
++      normalizeWhatsAppAllowFromEntryNumbers(cfg.channels?.whatsapp?.allowFrom ?? []),
+   };
+ 
+   const telegramPlugin = createOutboundTestPlugin({
+diff --git a/src/plugin-sdk/allowlist-config-edit.ts b/src/plugin-sdk/allowlist-config-edit.ts
+index a2bff121e5..d55f844d83 100644
+--- a/src/plugin-sdk/allowlist-config-edit.ts
++++ b/src/plugin-sdk/allowlist-config-edit.ts
+@@ -26,6 +26,16 @@ type AllowlistAccountResolver<ResolvedAccount> = (params: {
+   cfg: OpenClawConfig;
+   accountId?: string | null;
+ }) => ResolvedAccount;
++type AllowlistConfigEntryReader = (entry: unknown) => string | undefined;
++type AllowlistConfigEntryFormatter = (params: { entry: string; accessGroup?: string }) => unknown;
++
++function readDefaultAllowlistConfigEntry(entry: unknown): string | undefined {
++  if (typeof entry !== "string" && typeof entry !== "number") {
++    return undefined;
++  }
++  const value = String(entry).trim();
++  return value || undefined;
++}
+ 
+ const DM_ALLOWLIST_CONFIG_PATHS: AllowlistConfigPaths = {
+   readPaths: [["allowFrom"]],
+@@ -258,26 +268,37 @@ function applyAccountScopedAllowlistConfigEdit(params: {
+   accountId?: string | null;
+   action: "add" | "remove";
+   entry: string;
++  accessGroup?: string;
+   normalize: (values: Array<string | number>) => string[];
+   paths: AllowlistConfigPaths;
++  readConfigEntry?: AllowlistConfigEntryReader;
++  formatConfigEntry?: AllowlistConfigEntryFormatter;
+ }): NonNullable<Awaited<ReturnType<NonNullable<ChannelAllowlistAdapter["applyConfigEdit"]>>>> {
+   const resolvedTarget = resolveAccountScopedWriteTarget(
+     params.parsedConfig,
+     params.channelId,
+     params.accountId,
+   );
+-  const existing: string[] = [];
++  const readConfigEntry = params.readConfigEntry ?? readDefaultAllowlistConfigEntry;
++  const existing: unknown[] = [];
++  const existingKeys = new Set<string>();
+   for (const path of params.paths.readPaths) {
+     const existingRaw = getNestedValue(resolvedTarget.target, path);
+     if (!Array.isArray(existingRaw)) {
+       continue;
+     }
+     for (const entry of existingRaw) {
+-      const value = String(entry).trim();
+-      if (!value || existing.includes(value)) {
++      const value = readConfigEntry(entry);
++      if (!value) {
+         continue;
+       }
+-      existing.push(value);
++      const normalized = params.normalize([value]);
++      const key = normalized.length > 0 ? normalized.join("\u0000") : value;
++      if (existingKeys.has(key)) {
++        continue;
++      }
++      existingKeys.add(key);
++      existing.push(entry);
+     }
+   }
+ 
+@@ -286,7 +307,10 @@ function applyAccountScopedAllowlistConfigEdit(params: {
+     return { kind: "invalid-entry" };
+   }
+ 
+-  const existingNormalized = params.normalize(existing);
++  const existingNormalized = existing.flatMap((entry) => {
++    const value = readConfigEntry(entry);
++    return value ? params.normalize([value]) : [];
++  });
+   const shouldMatch = (value: string) => normalizedEntry.includes(value);
+ 
+   let changed = false;
+@@ -294,14 +318,19 @@ function applyAccountScopedAllowlistConfigEdit(params: {
+   const configHasEntry = existingNormalized.some((value) => shouldMatch(value));
+   if (params.action === "add") {
+     if (!configHasEntry) {
+-      next = [...existing, params.entry.trim()];
++      const formatted = params.formatConfigEntry?.({
++        entry: params.entry.trim(),
++        accessGroup: params.accessGroup,
++      });
++      next = [...existing, formatted ?? params.entry.trim()];
+       changed = true;
+     }
+   } else {
+-    const keep: string[] = [];
++    const keep: unknown[] = [];
+     for (const entry of existing) {
+-      const normalized = params.normalize([entry]);
+-      if (normalized.some((value) => shouldMatch(value))) {
++      const value = readConfigEntry(entry);
++      const normalized = value ? params.normalize([value]) : [];
++      if (normalized.some((entryValue) => shouldMatch(entryValue))) {
+         changed = true;
+         continue;
+       }
+@@ -328,14 +357,15 @@ function applyAccountScopedAllowlistConfigEdit(params: {
+     writeTarget: resolvedTarget.writeTarget,
+   };
+ }
+-
+ /** Build the default account-scoped allowlist editor used by channel plugins with config-backed lists. */
+ export function buildAccountScopedAllowlistConfigEditor(params: {
+   channelId: ChannelId;
+   normalize: AllowlistNormalizer;
+   resolvePaths: (scope: "dm" | "group") => AllowlistConfigPaths | null;
++  readConfigEntry?: AllowlistConfigEntryReader;
++  formatConfigEntry?: AllowlistConfigEntryFormatter;
+ }): NonNullable<ChannelAllowlistAdapter["applyConfigEdit"]> {
+-  return ({ cfg, parsedConfig, accountId, scope, action, entry }) => {
++  return ({ cfg, parsedConfig, accountId, scope, action, entry, accessGroup }) => {
+     const paths = params.resolvePaths(scope);
+     if (!paths) {
+       return null;
+@@ -346,8 +376,11 @@ export function buildAccountScopedAllowlistConfigEditor(params: {
+       accountId,
+       action,
+       entry,
++      accessGroup,
+       normalize: (values) => params.normalize({ cfg, accountId, values }),
+       paths,
++      readConfigEntry: params.readConfigEntry,
++      formatConfigEntry: params.formatConfigEntry,
+     });
+   };
+ }
+@@ -358,6 +391,8 @@ function buildAccountAllowlistAdapter<ResolvedAccount>(params: {
+   normalize: AllowlistNormalizer;
+   supportsScope: NonNullable<ChannelAllowlistAdapter["supportsScope"]>;
+   resolvePaths: (scope: "dm" | "group") => AllowlistConfigPaths | null;
++  readConfigEntry?: AllowlistConfigEntryReader;
++  formatConfigEntry?: AllowlistConfigEntryFormatter;
+   readConfig: (
+     account: ResolvedAccount,
+     context: { cfg: OpenClawConfig; accountId?: string | null },
+@@ -371,6 +406,8 @@ function buildAccountAllowlistAdapter<ResolvedAccount>(params: {
+       channelId: params.channelId,
+       normalize: params.normalize,
+       resolvePaths: params.resolvePaths,
++      readConfigEntry: params.readConfigEntry,
++      formatConfigEntry: params.formatConfigEntry,
+     }),
+   };
+ }
+@@ -388,6 +425,8 @@ export function buildDmGroupAccountAllowlistAdapter<ResolvedAccount>(params: {
+   resolveDmPolicy?: (account: ResolvedAccount) => string | null | undefined;
+   resolveGroupPolicy?: (account: ResolvedAccount) => string | null | undefined;
+   resolveGroupOverrides?: (account: ResolvedAccount) => AllowlistGroupOverride[] | undefined;
++  readConfigEntry?: AllowlistConfigEntryReader;
++  formatConfigEntry?: AllowlistConfigEntryFormatter;
+ }): Pick<ChannelAllowlistAdapter, "supportsScope" | "readConfig" | "applyConfigEdit"> {
+   return buildAccountAllowlistAdapter({
+     channelId: params.channelId,
+@@ -402,6 +441,8 @@ export function buildDmGroupAccountAllowlistAdapter<ResolvedAccount>(params: {
+       groupPolicy: params.resolveGroupPolicy?.(account) ?? undefined,
+       groupOverrides: params.resolveGroupOverrides?.(account),
+     }),
++    readConfigEntry: params.readConfigEntry,
++    formatConfigEntry: params.formatConfigEntry,
+   });
+ }
+ 
+@@ -416,6 +457,8 @@ export function buildLegacyDmAccountAllowlistAdapter<ResolvedAccount>(params: {
+   ) => Array<string | number> | null | undefined;
+   resolveGroupPolicy?: (account: ResolvedAccount) => string | null | undefined;
+   resolveGroupOverrides?: (account: ResolvedAccount) => AllowlistGroupOverride[] | undefined;
++  readConfigEntry?: AllowlistConfigEntryReader;
++  formatConfigEntry?: AllowlistConfigEntryFormatter;
+ }): Pick<ChannelAllowlistAdapter, "supportsScope" | "readConfig" | "applyConfigEdit"> {
+   return buildAccountAllowlistAdapter({
+     channelId: params.channelId,
+@@ -428,5 +471,7 @@ export function buildLegacyDmAccountAllowlistAdapter<ResolvedAccount>(params: {
+       groupPolicy: params.resolveGroupPolicy?.(account) ?? undefined,
+       groupOverrides: params.resolveGroupOverrides?.(account),
+     }),
++    readConfigEntry: params.readConfigEntry,
++    formatConfigEntry: params.formatConfigEntry,
+   });
+ }
+diff --git a/src/plugins/hook-message.types.ts b/src/plugins/hook-message.types.ts
+index 3faef26c2f..d314f54c05 100644
+--- a/src/plugins/hook-message.types.ts
++++ b/src/plugins/hook-message.types.ts
+@@ -9,6 +9,7 @@ export type PluginHookMessageContext = {
+   runId?: string;
+   messageId?: string;
+   senderId?: string;
++  senderGroup?: string;
+   trace?: DiagnosticTraceContext;
+   traceId?: string;
+   spanId?: string;
+@@ -36,6 +37,7 @@ export type PluginHookInboundClaimEvent = {
+   senderId?: string;
+   senderName?: string;
+   senderUsername?: string;
++  senderGroup?: string;
+   threadId?: string | number;
+   messageId?: string;
+   sessionKey?: string;
+@@ -57,6 +59,7 @@ export type PluginHookMessageReceivedEvent = {
+   threadId?: string | number;
+   messageId?: string;
+   senderId?: string;
++  senderGroup?: string;
+   sessionKey?: string;
+   runId?: string;
+   trace?: DiagnosticTraceContext;
