@@ -1,6 +1,6 @@
 import { expectChannelInboundContextContract } from "openclaw/plugin-sdk/channel-contract-testing";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildTelegramMessageContextForTest } from "./bot-message-context.test-harness.js";
 
 describe("Telegram inbound context contract", () => {
