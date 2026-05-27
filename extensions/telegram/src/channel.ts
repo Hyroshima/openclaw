@@ -660,26 +660,29 @@ export const telegramPlugin = createChatChannelPlugin({
       setupWizard: telegramSetupWizard,
       setup: telegramSetupAdapter,
     }),
-    allowlist: buildDmGroupAccountAllowlistAdapter({
-      channelId: "telegram",
-      resolveAccount: resolveTelegramAccount,
-      normalize: ({ cfg, accountId, values }) =>
-        telegramConfigAdapter.formatAllowFrom!({ cfg, accountId, allowFrom: values }),
-      resolveDmAllowFrom: (account) => normalizeTelegramAllowFromEntries(account.config.allowFrom ?? []),
-      resolveGroupAllowFrom: (account) => account.config.groupAllowFrom,
-      resolveDmPolicy: (account) => account.config.dmPolicy,
-      resolveGroupPolicy: (account) => account.config.groupPolicy,
-      resolveGroupOverrides: resolveTelegramAllowlistGroupOverrides,
-      readConfigEntry: readTelegramAllowFromEntryNumber,
-      readConfigEntryAccessGroup: readTelegramAllowFromEntryGroup,
-      formatConfigEntry: ({ entry, accessGroup }) =>
-        accessGroup && isTelegramAllowFromGroup(accessGroup)
-          ? createTelegramAllowFromEntry({ number: entry, group: accessGroup })
-          : entry,
-    }),
-    accessGroups: {
-      groups: TELEGRAM_ALLOW_FROM_GROUPS,
-      defaultGroup: DEFAULT_TELEGRAM_ALLOW_FROM_GROUP,
+    allowlist: {
+      ...buildDmGroupAccountAllowlistAdapter({
+        channelId: "telegram",
+        resolveAccount: resolveTelegramAccount,
+        normalize: ({ cfg, accountId, values }) =>
+          telegramConfigAdapter.formatAllowFrom!({ cfg, accountId, allowFrom: values }),
+        resolveDmAllowFrom: (account) =>
+          normalizeTelegramAllowFromEntries(account.config.allowFrom ?? []),
+        resolveGroupAllowFrom: (account) => account.config.groupAllowFrom,
+        resolveDmPolicy: (account) => account.config.dmPolicy,
+        resolveGroupPolicy: (account) => account.config.groupPolicy,
+        resolveGroupOverrides: resolveTelegramAllowlistGroupOverrides,
+        readConfigEntry: readTelegramAllowFromEntryNumber,
+        readConfigEntryAccessGroup: readTelegramAllowFromEntryGroup,
+        formatConfigEntry: ({ entry, accessGroup }) =>
+          accessGroup && isTelegramAllowFromGroup(accessGroup)
+            ? createTelegramAllowFromEntry({ number: entry, group: accessGroup })
+            : entry,
+      }),
+      accessGroups: {
+        groups: TELEGRAM_ALLOW_FROM_GROUPS,
+        defaultGroup: DEFAULT_TELEGRAM_ALLOW_FROM_GROUP,
+      },
     },
     bindings: {
       selfParentConversationByDefault: true,
