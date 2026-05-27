@@ -277,15 +277,30 @@ is omitted.
         "whatsapp": {
           "dmPolicy": "allowlist",
           "allowFrom": [
-            "+15551234567",
-            { "number": "+15557654321", "group": "friends" }
+            "+<trusted-sender-number>",
+            { "number": "+<friend-sender-number>", "group": "friends" }
           ]
         }
       }
     }
     ```
 
-    Supported groups are `trusted`, `partner`, `friends`, `family`, `work`, and `restricted`. Grouped entries still authorize the sender like the legacy string form, and admitted WhatsApp turns include the sender group in message context as `SenderGroup` and hook context metadata as `senderGroup`.
+    Supported groups are `trusted`, `partner`, `friends`, `family`, `work`, and `restricted`. Grouped entries still authorize the sender like the legacy string form, and admitted WhatsApp turns include the sender group in message context as `SenderGroup`, hook context metadata as `senderGroup`, and trusted inbound system prompt metadata as `sender_group`.
+
+    You can reference `sender_group` from your agent's `SOUL.md` to adjust behavior by access group:
+
+    ```md
+    ## WhatsApp sender groups
+
+    The current WhatsApp sender group is available in trusted inbound metadata as `sender_group`.
+
+    - `trusted`: Full access.
+    - `partner`: Broad access; ask the operator to confirm sensitive actions.
+    - `friends`: Normal conversation, without sensitive tools.
+    - `family`: Warm, supportive tone, without tools.
+    - `work`: Professional and formal focus.
+    - `restricted`: Basic and reserved interaction for unknown senders.
+    ```
 
     `allowFrom` is a DM sender access-control list. It does not gate explicit outbound sends to WhatsApp group JIDs or `@newsletter` channel JIDs.
 
@@ -297,7 +312,7 @@ is omitted.
     - scheduled automation and heartbeat recipient fallback use explicit delivery targets or configured `allowFrom`; DM pairing approvals are not implicit cron or heartbeat recipients
     - if no allowlist is configured, the linked self number is allowed by default
     - OpenClaw never auto-pairs outbound `fromMe` DMs (messages you send to yourself from the linked device)
-    - `/approve +15557654321` writes a grouped `allowFrom` entry with group `restricted`; `/approve +15557654321 friends` writes group `friends`
+    - `/approve <sender-number>` writes a grouped `allowFrom` entry with group `restricted`; `/approve <sender-number> friends` writes group `friends`
 
   </Tab>
 

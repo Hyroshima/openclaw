@@ -272,9 +272,9 @@ describe("message hook mappers", () => {
   it("maps pre-auth payloads without session or run correlation", () => {
     const canonical = deriveInboundMessageHookContext(
       makeInboundCtx({
-        BodyForCommands: "Memento Mori",
+        BodyForCommands: "Let me in",
         SenderId: "+15551234567",
-        SenderName: "Visitor",
+        SenderName: "Requester",
         SessionKey: undefined,
       }),
     );
@@ -282,8 +282,8 @@ describe("message hook mappers", () => {
     expect(toPluginMessagePreAuthEvent(canonical)).toMatchObject({
       channelId: "demo-chat",
       senderId: "+15551234567",
-      senderName: "Visitor",
-      content: "Memento Mori",
+      senderName: "Requester",
+      content: "Let me in",
       accountId: "acc-1",
       conversationId: "demo-chat:chat:456",
     });
@@ -291,8 +291,8 @@ describe("message hook mappers", () => {
     expect(toInternalMessagePreAuthContext(canonical)).toMatchObject({
       channelId: "demo-chat",
       senderId: "+15551234567",
-      senderName: "Visitor",
-      content: "Memento Mori",
+      senderName: "Requester",
+      content: "Let me in",
     });
   });
 

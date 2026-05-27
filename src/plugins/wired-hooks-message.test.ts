@@ -73,8 +73,8 @@ describe("message_pre_auth hook runner", () => {
     const event: PluginHookMessagePreAuthEvent = {
       channelId: "whatsapp",
       senderId: "+15551234567",
-      senderName: "Visitor",
-      content: "Memento Mori",
+      senderName: "Requester",
+      content: "Let me in",
     };
     const ctx = { channelId: "whatsapp", senderId: "+15551234567" };
 

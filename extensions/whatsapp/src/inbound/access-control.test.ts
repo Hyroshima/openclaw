@@ -105,7 +105,7 @@ describe("checkInboundAccessControl pairing grace", () => {
       connectedAtMs,
       pairingGraceMs: 30_000,
       sock: { sendMessage: sendMessageMock },
-      remoteJid: "15550001111@s.whatsapp.net",
+      remoteJid: "sender@s.whatsapp.net",
     });
   }
 
@@ -169,16 +169,16 @@ describe("WhatsApp dmPolicy precedence", () => {
       from: "+15550001111",
       selfE164: "+15550009999",
       senderE164: "+15550001111",
-      content: "Memento Mori",
+      content: "Let me in",
       group: false,
-      pushName: "Visitor",
+      pushName: "Requester",
       isFromMe: false,
       messagePreAuthHookRunner: {
         hasHooks: (hookName) => hookName === "message_pre_auth",
         runMessagePreAuth: runMessagePreAuthMock as never,
       },
       sock: { sendMessage: sendMessageMock },
-      remoteJid: "15550001111@s.whatsapp.net",
+      remoteJid: "sender@s.whatsapp.net",
     });
     await flushPreAuthHooks();
 
@@ -188,8 +188,8 @@ describe("WhatsApp dmPolicy precedence", () => {
       expect.objectContaining({
         channelId: "whatsapp",
         senderId: "+15550001111",
-        senderName: "Visitor",
-        content: "Memento Mori",
+        senderName: "Requester",
+        content: "Let me in",
         accountId: "default",
         conversationId: "+15550001111",
       }),
@@ -226,7 +226,7 @@ describe("WhatsApp dmPolicy precedence", () => {
         runMessagePreAuth: runMessagePreAuthMock as never,
       },
       sock: { sendMessage: sendMessageMock },
-      remoteJid: "15550001111@s.whatsapp.net",
+      remoteJid: "sender@s.whatsapp.net",
     });
     await flushPreAuthHooks();
 
@@ -256,7 +256,7 @@ describe("WhatsApp dmPolicy precedence", () => {
       pushName: "Known",
       isFromMe: false,
       sock: { sendMessage: sendMessageMock },
-      remoteJid: "15550001111@s.whatsapp.net",
+      remoteJid: "sender@s.whatsapp.net",
     });
     const commandAuthorized = await checkCommandAuthorizedForDm({ cfg });
 

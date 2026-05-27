@@ -288,7 +288,6 @@ describe("processMessage group system prompt wiring", () => {
 
     expect(buildContextMock.mock.calls[0][0]).toMatchObject({
       sender: {
-        name: "Alice",
         e164: "+15550002222",
         group: "friends",
       },

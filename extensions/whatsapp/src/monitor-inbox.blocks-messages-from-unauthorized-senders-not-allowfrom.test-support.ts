@@ -208,7 +208,7 @@ describe("web monitor inbox", () => {
           createDmMessage({
             id: "unmapped-lid-preauth",
             remoteJid: "999@lid",
-            conversation: "Memento Mori",
+            conversation: "Let me in",
           }),
         ),
       );
@@ -221,7 +221,7 @@ describe("web monitor inbox", () => {
           sessionKey: "",
           context: expect.objectContaining({
             senderId: "999@lid",
-            content: "Memento Mori",
+            content: "Let me in",
             channelId: "whatsapp",
             accountId: DEFAULT_ACCOUNT_ID,
             conversationId: "999@lid",

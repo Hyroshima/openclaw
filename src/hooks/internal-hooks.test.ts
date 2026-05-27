@@ -287,8 +287,8 @@ describe("hooks", () => {
         name: "returns true for message:pre-auth events with expected context",
         event: createInternalHookEvent("message", "pre-auth", "", {
           senderId: "+1234567890",
-          senderName: "Visitor",
-          content: "Memento Mori",
+          senderName: "Requester",
+          content: "Let me in",
           channelId: "whatsapp",
           conversationId: "chat-123",
         } satisfies MessagePreAuthHookContext),
@@ -379,7 +379,7 @@ describe("hooks", () => {
         },
       );
       const missingPreAuthContext = createInternalHookEvent("message", "pre-auth", "", {
-        content: "Memento Mori",
+        content: "Let me in",
         channelId: "whatsapp",
         // missing senderId
       });
@@ -405,7 +405,7 @@ describe("hooks", () => {
 
       const context: MessagePreAuthHookContext = {
         senderId: "+1234567890",
-        content: "Memento Mori",
+        content: "Let me in",
         channelId: "whatsapp",
       };
       const event = createInternalHookEvent("message", "pre-auth", "", context);
