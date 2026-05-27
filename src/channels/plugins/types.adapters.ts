@@ -681,12 +681,14 @@ export type ChannelAllowlistAdapter = {
     action: "add" | "remove";
     entry: string;
     accessGroup?: string;
+    accessGroupExplicit?: boolean;
   }) =>
     | {
         kind: "ok";
         changed: boolean;
         pathLabel: string;
         writeTarget: ConfigWriteTarget;
+        accessGroupChanged?: { from?: string; to: string };
       }
     | {
         kind: "invalid-entry";
@@ -697,6 +699,7 @@ export type ChannelAllowlistAdapter = {
             changed: boolean;
             pathLabel: string;
             writeTarget: ConfigWriteTarget;
+            accessGroupChanged?: { from?: string; to: string };
           }
         | {
             kind: "invalid-entry";

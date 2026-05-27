@@ -137,7 +137,7 @@ function resolveApprovalAuthorizationError(params: {
 }
 
 type ParsedAllowlistApproveCommand =
-  | { ok: true; entry: string; group: string }
+  | { ok: true; entry: string; group: string; groupExplicit: boolean }
   | { ok: false; error: string };
 
 type AllowlistAccessGroups = {
@@ -162,6 +162,7 @@ function parseAllowlistApproveCommand(
   if (!entry) {
     return null;
   }
+  const groupExplicit = tokens[1] !== undefined;
   const group = normalizeLowercaseStringOrEmpty(tokens[1] ?? accessGroups.defaultGroup);
   if (!group || !accessGroups.groups.includes(group)) {
     return {
@@ -169,7 +170,7 @@ function parseAllowlistApproveCommand(
       error: `⚠️ Invalid allowlist group. Use one of: ${accessGroups.groups.join(", ")}.`,
     };
   }
-  return { ok: true, entry, group };
+  return { ok: true, entry, group, groupExplicit };
 }
 
 function resolveCommandChannelId(params: HandleCommandsParams): ChannelId | undefined {
@@ -242,6 +243,7 @@ async function handleAllowlistApproveCommand(params: {
     action: "add",
     entry: parsed.entry,
     accessGroup: parsed.group,
+    accessGroupExplicit: parsed.groupExplicit,
   });
   if (!editResult) {
     return {
@@ -273,6 +275,7 @@ async function handleAllowlistApproveCommand(params: {
         action: "add",
         entry: parsed.entry,
         accessGroup: parsed.group,
+        accessGroupExplicit: parsed.groupExplicit,
         applyConfigEdit,
       });
     } catch (error) {
@@ -285,6 +288,15 @@ async function handleAllowlistApproveCommand(params: {
 
   if (!editResult.changed) {
     return { shouldContinue: false, reply: { text: "✅ Already allowlisted." } };
+  }
+  if (editResult.accessGroupChanged) {
+    const previousGroup = editResult.accessGroupChanged.from ?? "unassigned";
+    return {
+      shouldContinue: false,
+      reply: {
+        text: `DM allowlist group updated (${previousGroup} -> ${editResult.accessGroupChanged.to}): ${editResult.pathLabel}.`,
+      },
+    };
   }
   return {
     shouldContinue: false,

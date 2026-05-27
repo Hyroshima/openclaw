@@ -13,6 +13,7 @@ import {
   DEFAULT_WHATSAPP_ALLOW_FROM_GROUP,
   isWhatsAppAllowFromGroup,
   normalizeWhatsAppAllowFromEntryNumbers,
+  readWhatsAppAllowFromEntryGroup,
   readWhatsAppAllowFromEntryNumber,
   WHATSAPP_ALLOW_FROM_GROUPS,
 } from "./allow-from-groups.js";
@@ -113,6 +114,7 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
           resolveDmPolicy: (account) => account.dmPolicy,
           resolveGroupPolicy: (account) => account.groupPolicy,
           readConfigEntry: readWhatsAppAllowFromEntryNumber,
+          readConfigEntryAccessGroup: readWhatsAppAllowFromEntryGroup,
           formatConfigEntry: ({ entry, accessGroup }) =>
             accessGroup && isWhatsAppAllowFromGroup(accessGroup)
               ? createWhatsAppAllowFromEntry({ number: entry, group: accessGroup })

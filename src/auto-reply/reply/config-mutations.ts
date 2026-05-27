@@ -88,6 +88,7 @@ type AllowlistConfigEditResult =
   | {
       kind?: "ok" | "invalid-entry";
       changed?: boolean;
+      accessGroupChanged?: { from?: string; to: string };
     }
   | null
   | undefined;
@@ -102,6 +103,7 @@ type ApplyAllowlistConfigEdit = (params: {
   action: "add" | "remove";
   entry: string;
   accessGroup?: string;
+  accessGroupExplicit?: boolean;
 }) => MaybePromise<AllowlistConfigEditResult>;
 
 export async function applyAllowlistConfigMutation(params: {
@@ -111,6 +113,7 @@ export async function applyAllowlistConfigMutation(params: {
   action: "add" | "remove";
   entry: string;
   accessGroup?: string;
+  accessGroupExplicit?: boolean;
   applyConfigEdit: ApplyAllowlistConfigEdit;
 }): Promise<void> {
   await transformConfigFileWithRetry({
@@ -126,6 +129,7 @@ export async function applyAllowlistConfigMutation(params: {
         action: params.action,
         entry: params.entry,
         accessGroup: params.accessGroup,
+        accessGroupExplicit: params.accessGroupExplicit,
       });
       if (!latestEditResult || latestEditResult.kind === "invalid-entry") {
         throw new AutoReplyConfigMutationError("Invalid allowlist entry.");

@@ -417,26 +417,44 @@ function createGroupedWhatsAppApproveTestPlugin(applyConfigEdit = vi.fn()): Chan
         defaultGroup: "restricted",
       },
       applyConfigEdit: applyConfigEdit.mockImplementation(
-        ({ parsedConfig, entry, accessGroup }) => {
+        ({ parsedConfig, entry, accessGroup, accessGroupExplicit }) => {
           if (!/^\+?\d+$/.test(entry)) {
             return { kind: "invalid-entry" };
           }
           const channels = (parsedConfig.channels ??= {}) as Record<string, unknown>;
           const whatsapp = (channels.whatsapp ??= {}) as { allowFrom?: unknown[] };
           const allowFrom = Array.isArray(whatsapp.allowFrom) ? whatsapp.allowFrom : [];
-          const exists = allowFrom.some(
+          const existingIndex = allowFrom.findIndex(
             (value) =>
               typeof value === "object" &&
               value !== null &&
               !Array.isArray(value) &&
               (value as { number?: unknown }).number === entry,
           );
-          if (!exists) {
+          const existing =
+            existingIndex >= 0
+              ? (allowFrom[existingIndex] as { number?: unknown; group?: unknown })
+              : undefined;
+          const existingGroup = typeof existing?.group === "string" ? existing.group : undefined;
+          if (!existing) {
             whatsapp.allowFrom = [...allowFrom, { number: entry, group: accessGroup }];
+          } else if (accessGroupExplicit && existingGroup !== accessGroup) {
+            whatsapp.allowFrom = allowFrom.map((value, index) =>
+              index === existingIndex ? { number: entry, group: accessGroup } : value,
+            );
           }
+          const changed = !existing || (accessGroupExplicit && existingGroup !== accessGroup);
           return {
             kind: "ok" as const,
-            changed: !exists,
+            changed,
+            ...(existing && changed
+              ? {
+                  accessGroupChanged: {
+                    ...(existingGroup ? { from: existingGroup } : {}),
+                    to: accessGroup,
+                  },
+                }
+              : {}),
             pathLabel: "channels.whatsapp.allowFrom",
             writeTarget: { kind: "channel" as const, scope: { channelId: "whatsapp" as const } },
           };
@@ -577,6 +595,59 @@ describe("handleApproveCommand", () => {
         action: "add",
         entry: "+15550002222",
         accessGroup: "friends",
+      }),
+    );
+    expect(applyConfigEdit.mock.calls[0][0].parsedConfig.channels.whatsapp.allowFrom).toEqual([
+      { number: "+15550002222", group: "friends" },
+    ]);
+  });
+
+  it("updates an existing WhatsApp allowFrom group from /approve", async () => {
+    const applyConfigEdit = vi.fn();
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "whatsapp",
+          plugin: createGroupedWhatsAppApproveTestPlugin(applyConfigEdit),
+          source: "test",
+        },
+      ]),
+    );
+    readConfigFileSnapshotMock.mockResolvedValue({
+      valid: true,
+      parsed: {
+        channels: {
+          whatsapp: {
+            dmPolicy: "allowlist",
+            allowFrom: [{ number: "+15550002222", group: "restricted" }],
+          },
+        },
+      },
+    });
+    const params = buildApproveParams(
+      "/approve +15550002222 friends",
+      {
+        commands: { text: true, config: true },
+        channels: {
+          whatsapp: {
+            dmPolicy: "allowlist",
+            allowFrom: [{ number: "+15550002222", group: "restricted" }],
+          },
+        },
+      } as OpenClawConfig,
+      { SenderId: "owner" },
+    );
+    params.command.senderIsOwner = true;
+
+    const result = await handleApproveCommand(params, true);
+
+    expect(result?.shouldContinue).toBe(false);
+    expect(result?.reply?.text).toContain("DM allowlist group updated (restricted -> friends)");
+    expect(applyConfigEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entry: "+15550002222",
+        accessGroup: "friends",
+        accessGroupExplicit: true,
       }),
     );
     expect(applyConfigEdit.mock.calls[0][0].parsedConfig.channels.whatsapp.allowFrom).toEqual([
