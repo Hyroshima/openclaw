@@ -39,4 +39,23 @@ describe("Telegram inbound context contract", () => {
     }
     expectChannelInboundContextContract(payload);
   });
+
+  it("includes the configured Telegram sender group for admitted DMs", async () => {
+    const context = await buildTelegramMessageContextForTest({
+      allowFrom: [{ number: "42", group: "friends" }],
+      message: {
+        chat: { id: 42, type: "private" },
+        text: "hello",
+        date: 1_736_380_800,
+        message_id: 2,
+        from: {
+          id: 42,
+          first_name: "Ada",
+          username: "ada",
+        },
+      },
+    });
+
+    expect(context?.ctxPayload?.SenderGroup).toBe("friends");
+  });
 });

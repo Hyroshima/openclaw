@@ -15,6 +15,7 @@ import {
   expandTelegramAllowFromWithAccessGroups,
   resolveTelegramDmAllow,
 } from "./access-groups.js";
+import { resolveTelegramAllowFromSenderGroup } from "./allow-from.js";
 import { mergeTelegramAccountConfig, resolveDefaultTelegramAccountId } from "./accounts.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import {
@@ -279,6 +280,12 @@ export const buildTelegramMessageContext = async ({
     storeAllowFrom,
     dmPolicy: effectiveDmPolicy,
   });
+  const senderGroup = !isGroup
+    ? resolveTelegramAllowFromSenderGroup({
+        allowFrom: dmAllow.allowFrom ?? [],
+        senderId,
+      })
+    : undefined;
   const expandedGroupAllowFrom = await expandTelegramAllowFromWithAccessGroups({
     cfg: freshCfg,
     allowFrom: groupAllowOverride ?? groupAllowFrom,
@@ -513,6 +520,7 @@ export const buildTelegramMessageContext = async ({
     locationData: bodyResult.locationData,
     options,
     dmAllowFrom: dmAllow.allowFrom,
+    senderGroup,
     effectiveGroupAllow,
     commandAuthorized: bodyResult.commandAuthorized,
     topicName,

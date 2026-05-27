@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { buildChannelInboundEventContext } from "openclaw/plugin-sdk/channel-inbound";
 import type { BuildTelegramMessageContextParams, TelegramMediaRef } from "./bot-message-context.js";
+import type { TelegramAllowFromEntry } from "./allow-from.js";
 import { setTelegramTopicNameStoreFactoryForTest } from "./topic-name-cache.js";
 
 export const baseTelegramMessageContextConfig = {
@@ -24,6 +25,7 @@ type BuildTelegramMessageContextForTestParams = {
   options?: BuildTelegramMessageContextParams["options"];
   cfg?: Record<string, unknown>;
   accountId?: string;
+  allowFrom?: TelegramAllowFromEntry[];
   historyLimit?: number;
   groupHistories?: Map<string, import("openclaw/plugin-sdk/reply-history").HistoryEntry[]>;
   ackReactionScope?: BuildTelegramMessageContextParams["ackReactionScope"];
@@ -128,7 +130,7 @@ export async function buildTelegramMessageContextForTest(
     historyLimit: params.historyLimit ?? 0,
     groupHistories: params.groupHistories ?? new Map(),
     dmPolicy: "open",
-    allowFrom: ["*"],
+    allowFrom: params.allowFrom ?? ["*"],
     groupAllowFrom: [],
     ackReactionScope: params.ackReactionScope ?? "off",
     logger: { info: vi.fn() },
