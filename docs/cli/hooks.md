@@ -130,7 +130,7 @@ openclaw hooks enable <name>
 
 Enable a specific hook by adding it to your config (`~/.openclaw/openclaw.json` by default).
 
-**Note:** Workspace hooks are disabled by default until enabled here or in config. Hooks managed by plugins show `plugin:<id>` in `openclaw hooks list` and can't be enabled/disabled here. Enable/disable the plugin instead.
+**Note:** Workspace hooks are disabled by default until enabled here or in config. The workspace `access-request` hook is auto-loaded when any channel or account uses `dmPolicy: "allowlist"`, then unloaded when no DM allowlist policy remains. Hooks managed by plugins show `plugin:<id>` in `openclaw hooks list` and can't be enabled/disabled here. Enable/disable the plugin instead.
 
 **Arguments:**
 

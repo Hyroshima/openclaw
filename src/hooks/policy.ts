@@ -1,4 +1,5 @@
 import type { OpenClawConfig, HookConfig } from "../config/config.js";
+import { ACCESS_REQUEST_HOOK_NAME, shouldAutoEnableAccessRequestHook } from "./access-request-auto.js";
 import { resolveHookKey } from "./frontmatter.js";
 import type { HookEntry, HookSource } from "./types.js";
 
@@ -87,6 +88,12 @@ export function resolveHookEnableState(params: {
   }
   if (hookConfig?.enabled === false) {
     return { enabled: false, reason: "disabled in config" };
+  }
+  if (
+    entry.hook.name === ACCESS_REQUEST_HOOK_NAME &&
+    shouldAutoEnableAccessRequestHook(config)
+  ) {
+    return { enabled: true };
   }
 
   const sourcePolicy = getHookSourcePolicy(entry.hook.source);
